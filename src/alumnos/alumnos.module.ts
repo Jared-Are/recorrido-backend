@@ -10,5 +10,6 @@ import { Alumno } from './alumno.entity'; // <-- ¿Importado?
   ],
   controllers: [AlumnosController], // <-- ¿Está el controlador aquí?
   providers: [AlumnosService],    // <-- ¿Está el servicio aquí?
+  exports: [TypeOrmModule] // <-- Esto permite que otros módulos usen Repository<Alumno>
 })
 export class AlumnosModule {}
