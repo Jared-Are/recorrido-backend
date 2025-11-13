@@ -1,7 +1,10 @@
+// src/pagos/pagos.controller.ts
+
 import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, HttpCode } from '@nestjs/common';
 import { PagosService } from './pagos.service';
 import { CreatePagoDto } from './dto/create-pago.dto';
 import { UpdatePagoDto } from './dto/update-pago.dto';
+import { CreatePagoBatchDto } from './dto/create-pago-batch.dto'; // <-- 1. IMPORTAR
 
 @Controller('pagos') // URL Base: /pagos
 export class PagosController {
@@ -11,6 +14,15 @@ export class PagosController {
   create(@Body() createPagoDto: CreatePagoDto) {
     return this.pagosService.create(createPagoDto);
   }
+
+  // --- NUEVO ENDPOINT PARA PAGO EN LOTE (PUNTO 3) ---
+  @Post('batch') // Responderá a [POST] /pagos/batch
+  @HttpCode(201)
+  createBatch(@Body() createPagoBatchDto: CreatePagoBatchDto) {
+    // 2. LLAMAR AL NUEVO MÉTODO DEL SERVICIO
+    return this.pagosService.createBatch(createPagoBatchDto);
+  }
+  // --- FIN DEL NUEVO ENDPOINT ---
 
   @Get()
   findAll() {
