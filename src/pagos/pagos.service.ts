@@ -1,5 +1,3 @@
-// src/pagos/pagos.service.ts
-
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -7,7 +5,7 @@ import { Pago } from './pago.entity';
 import { CreatePagoDto } from './dto/create-pago.dto';
 import { UpdatePagoDto } from './dto/update-pago.dto';
 import { CreatePagoBatchDto } from './dto/create-pago-batch.dto';
-import { Alumno } from '../alumnos/alumno.entity'; // <-- 1. IMPORTAR LA ENTIDAD ALUMNO
+import { Alumno } from '../alumnos/alumno.entity';
 
 @Injectable()
 export class PagosService {
@@ -15,84 +13,90 @@ export class PagosService {
     @InjectRepository(Pago)
     private pagosRepository: Repository<Pago>,
 
-    // --- 2. INYECTAR EL REPOSITORIO DE ALUMNOS ---
     @InjectRepository(Alumno)
     private alumnosRepository: Repository<Alumno>,
   ) {}
 
   // --- CREAR (UN PAGO) ---
-  // Convertido a async para permitir la validación
+  // AHORA CON VALIDACIÓN COMPLETA PARA TODOS LOS MESES
   async create(createPagoDto: CreatePagoDto): Promise<Pago> {
     
-    // --- 3. LÓGICA DE VALIDACIÓN (Backend) ---
-    // Esta validación solo se aplica a los abonos (Diciembre)
-    // Los pagos regulares (Feb-Nov) se asumen completos.
-    
+    const { alumnoId, mes, monto } = createPagoDto;
+
     const ANIO_ESCOLAR = new Date().getFullYear().toString();
     const MES_DICIEMBRE = `Diciembre ${ANIO_ESCOLAR}`;
 
-    if (createPagoDto.mes === MES_DICIEMBRE) {
-      // 1. Obtener el precio mensual del alumno desde la BD
-      const alumno = await this.alumnosRepository.findOneBy({ id: createPagoDto.alumnoId });
-      if (!alumno || !alumno.precio) {
-        throw new NotFoundException(`No se encontró el alumno o su precio.`);
+    // 1. Obtener el precio mensual del alumno desde la BD
+    const alumno = await this.alumnosRepository.findOneBy({ id: alumnoId });
+    if (!alumno || !alumno.precio) {
+      throw new NotFoundException(`No se encontró el alumno o su precio.`);
+    }
+    const precioMensual = alumno.precio;
+
+    // 2. Sumar pagos existentes para ese mes (en la BD)
+    const pagosExistentes = await this.pagosRepository.find({
+      where: {
+        alumnoId: alumnoId,
+        mes: mes
       }
-      const precioMensual = alumno.precio;
+    });
 
-      // 2. Sumar pagos existentes para ese mes (en la BD)
-      const pagosExistentes = await this.pagosRepository.find({
-        where: {
-          alumnoId: createPagoDto.alumnoId,
-          mes: MES_DICIEMBRE
-        }
-      });
+    // 3. Lógica de Validación (Híbrida)
+    if (mes === MES_DICIEMBRE) {
+      // --- LÓGICA DE ABONOS (Diciembre) ---
       const totalPagadoYa = pagosExistentes.reduce((sum, pago) => sum + pago.monto, 0);
-
-      // 3. Calcular saldo real en el servidor
       const saldoReal = precioMensual - totalPagadoYa;
 
-      // 4. ¡LA VALIDACIÓN CRÍTICA!
       // (con margen de 0.01 para errores de flotante)
-      if (createPagoDto.monto > (saldoReal + 0.01)) {
-        // Si el pago es mayor al saldo real, se rechaza.
+      if (monto > (saldoReal + 0.01)) {
         throw new BadRequestException( // Error 400
-          `El monto C$ ${createPagoDto.monto} excede el saldo pendiente real de C$ ${saldoReal.toFixed(2)}`
+          `El monto C$ ${monto} excede el saldo pendiente real de C$ ${saldoReal.toFixed(2)}`
+        );
+      }
+    } else {
+      // --- LÓGICA DE PAGO ÚNICO (Feb-Nov) ---
+      // Si ya existe CUALQUIER pago para este mes, lo rechazamos.
+      if (pagosExistentes.length > 0) {
+        throw new BadRequestException( // Error 400
+          `Ya existe un pago registrado para ${mes}. No se permiten pagos duplicados.`
+        );
+      }
+      
+      // Opcional: Validar que el monto sea el completo
+      if (Math.abs(monto - precioMensual) > 0.01) {
+         throw new BadRequestException(
+          `El monto C$ ${monto} no coincide con la mensualidad de C$ ${precioMensual.toFixed(2)} para este mes.`
         );
       }
     }
     // --- FIN DE LA VALIDACIÓN ---
 
-    // Si pasa la validación (o no era Diciembre), se guarda.
+    // 4. Si pasa la validación, se guarda.
     const newPago = this.pagosRepository.create(createPagoDto);
     return this.pagosRepository.save(newPago);
   }
 
   // --- PAGO EN LOTE (BATCH) ---
-  // También modificado para prevenir pagos duplicados (race condition)
+  // (Esta función ya tenía la validación correcta y no necesita cambios)
   async createBatch(createPagoBatchDto: CreatePagoBatchDto): Promise<Pago[]> {
     const { alumnoId, alumnoNombre, montoPorMes, meses, fecha } = createPagoBatchDto;
 
-    // --- 4. VALIDACIÓN BATCH ---
-    // 1. Ver qué meses de los solicitados ya existen en la BD
     const pagosExistentes = await this.pagosRepository.find({
       where: {
         alumnoId: alumnoId,
-        mes: In(meses) // In() busca todos los registros donde 'mes' sea uno de los del array
+        mes: In(meses) 
       }
     });
     const mesesYaPagados = new Set(pagosExistentes.map(p => p.mes));
 
-    // 2. Filtrar y quedarse solo con los meses que NO han sido pagados
     const mesesAGuardar = meses.filter(mes => !mesesYaPagados.has(mes));
     
     if (mesesAGuardar.length === 0) {
-      // El cliente intentó pagar meses que ya estaban pagados.
-      // Devolvemos un array vacío para no crear duplicados.
+      // El frontend intentó pagar meses que ya estaban en la BD.
+      // Devolvemos un array vacío y no hacemos nada.
       return []; 
     }
-    // --- FIN VALIDACIÓN BATCH ---
 
-    // 3. Crear solo los pagos de los meses filtrados
     const pagosAGuardar: Partial<Pago>[] = mesesAGuardar.map(mes => ({
       alumnoId: alumnoId,
       alumnoNombre: alumnoNombre,
@@ -125,8 +129,7 @@ export class PagosService {
   // --- ACTUALIZAR ---
   async update(id: string, updatePagoDto: UpdatePagoDto): Promise<Pago> {
     // TODO: La actualización también debería validar el monto
-    // si se está editando un pago de Diciembre.
-    // (Por ahora, lo dejamos así por simplicidad)
+    // si se está editando un pago. (Fase 2)
 
     const pago = await this.pagosRepository.preload({
       id: id,
