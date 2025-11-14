@@ -7,6 +7,7 @@ import { AsistenciasModule } from './asistencias/asistencias.module';
 import { AuthModule } from './auth/auth.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { PagosModule } from './pagos/pagos.module'; // <-- 1. IMPORTA EL NUEVO MÓDULO
+import { GastosModule } from './gastos/gastos.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PagosModule } from './pagos/pagos.module'; // <-- 1. IMPORTA EL NUEVO M
     AuthModule,
     UsuariosModule,
     PagosModule, // <-- 2. AÑÁDELO AQUÍ
+    GastosModule
   ],
   controllers: [AppController],
   providers: [AppService],
