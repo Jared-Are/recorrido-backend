@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'; // <-- 1. Importa NotFoundException
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alumno } from './alumno.entity';
@@ -7,64 +7,72 @@ import { UpdateAlumnoDto } from './dto/update-alumno.dto';
 
 @Injectable()
 export class AlumnosService {
-  
   constructor(
     @InjectRepository(Alumno)
     private alumnosRepository: Repository<Alumno>,
   ) {}
 
-  findAll(): Promise<Alumno[]> {
-    return this.alumnosRepository.find();
-  }
-
+  // --- CREAR ---
   async create(createAlumnoDto: CreateAlumnoDto): Promise<Alumno> {
-    const nuevoAlumno = this.alumnosRepository.create(createAlumnoDto);
-    return this.alumnosRepository.save(nuevoAlumno);
+    const newAlumno = this.alumnosRepository.create({
+      ...createAlumnoDto,
+      activo: true, // Por defecto al crear
+    });
+    return this.alumnosRepository.save(newAlumno);
   }
 
-  // --- 2. AÑADE ESTE NUEVO MÉTODO ---
-  async findOne(id: string): Promise<Alumno> {
-    // Busca al alumno por su ID
-    const alumno = await this.alumnosRepository.findOneBy({ id });
+  // --- LEER TODOS (Activos por defecto) ---
+  findAll(): Promise<Alumno[]> {
+    return this.alumnosRepository.find({
+      where: {
+        activo: true // El GET /alumnos normal solo trae activos
+      },
+      order: {
+        nombre: 'ASC'
+      }
+      // 'vehiculo' se carga automáticamente por el 'eager: true' en la entidad
+    });
+  }
 
-    // Si no lo encuentra, lanza un error 404
+  // --- ¡NUEVO MÉTODO AÑADIDO! ---
+  // --- LEER TODOS POR ESTADO ---
+  findAllByEstado(activo: boolean): Promise<Alumno[]> {
+     return this.alumnosRepository.find({
+      where: {
+        activo: activo // Filtra por 'activo: true' o 'activo: false'
+      },
+      order: {
+        nombre: 'ASC'
+      }
+    });
+  }
+  // --- FIN DEL NUEVO MÉTODO ---
+
+
+  // --- LEER UNO ---
+  async findOne(id: string): Promise<Alumno> {
+    const alumno = await this.alumnosRepository.findOneBy({ id });
     if (!alumno) {
       throw new NotFoundException(`Alumno con id ${id} no encontrado`);
     }
-
-    // Si lo encuentra, lo devuelve
     return alumno;
   }
 
-  // --- AÑADE ESTE NUEVO MÉTODO ---
+  // --- ACTUALIZAR (o cambiar estado) ---
   async update(id: string, updateAlumnoDto: UpdateAlumnoDto): Promise<Alumno> {
-    
-    // 1. Cargamos el alumno existente
-    //    'preload' busca por ID y luego fusiona los datos del DTO.
-    //    Si no lo encuentra, devuelve 'undefined'.
-    const alumnoExistente = await this.alumnosRepository.preload({
+    const alumno = await this.alumnosRepository.preload({
       id: id,
-      ...updateAlumnoDto, // Fusiona los nuevos datos
+      ...updateAlumnoDto,
     });
-
-    // 2. Si no existe, lanzamos un error 404
-    if (!alumnoExistente) {
+    if (!alumno) {
       throw new NotFoundException(`Alumno con id ${id} no encontrado`);
     }
-
-    // 3. Si existe, guardamos los cambios en la BD
-    return this.alumnosRepository.save(alumnoExistente);
+    return this.alumnosRepository.save(alumno);
   }
 
-  // --- AÑADE ESTE NUEVO MÉTODO ---
+  // --- ELIMINAR (Borrado Físico) ---
   async remove(id: string): Promise<void> {
-    
-    // 1. Primero, comprobamos que el alumno existe (y no está ya borrado)
-    //    Nuestro método findOne(id) ya hace esto, ¡así que lo reutilizamos!
-    const alumno = await this.findOne(id); 
-
-    // 2. Si findOne no lanzó un error 404, usamos softDelete
-    //    Esto no borra el registro, solo pone la fecha actual en la columna 'deletedAt'
-    await this.alumnosRepository.softDelete(id);
+    const alumno = await this.findOne(id); // Revisa si existe
+    await this.alumnosRepository.remove(alumno);
   }
 }
