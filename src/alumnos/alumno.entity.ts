@@ -22,7 +22,7 @@ export class Alumno {
   @Column('varchar')
   direccion: string;
 
-  @Column('float')
+  @Column('float', { default: 0 }) // <-- AÑADE ESTO
   precio: number;
 
   @Column('boolean', { default: true })
