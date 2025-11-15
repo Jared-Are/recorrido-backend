@@ -14,11 +14,9 @@ export class PersonalController {
 
   @Get()
   findAll(@Query('estado') estado: string) {
-    // /personal?estado=activo
     if (estado === 'activo' || estado === 'inactivo') {
       return this.personalService.findAllByEstado(estado);
     }
-    // /personal (devuelve 'activo' e 'inactivo')
     return this.personalService.findAll();
   }
 
@@ -32,14 +30,12 @@ export class PersonalController {
     @Param('id', ParseUUIDPipe) id: string, 
     @Body() updatePersonalDto: UpdatePersonalDto
   ) {
-    // Se usa para editar datos y para borrado lógico (soft delete)
     return this.personalService.update(id, updatePersonalDto);
   }
 
   @Delete(':id')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string) {
-    // Borrado FÍSICO (Hard Delete)
     return this.personalService.remove(id);
   }
 }

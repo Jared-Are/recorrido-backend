@@ -10,19 +10,20 @@ export class CreateGastoDto {
   @IsIn(['combustible', 'mantenimiento', 'salarios', 'otros'])
   readonly categoria: string;
 
-  @IsString()
+  @IsUUID() 
   @IsOptional()
-  @IsIn(['Microbús 01', 'Microbús 02', 'Ambos', 'N/A'])
-  readonly microbus: string;
+  readonly vehiculoId: string; // Refactorizado (antes 'microbus')
 
+  // --- CAMBIOS DE LÓGICA ---
   @IsNumber()
+  @IsOptional() // Ahora es opcional (si es salario, se toma automático)
   readonly monto: number;
+
+  @IsUUID()
+  @IsOptional() // Es opcional (solo para salarios)
+  readonly personalId: string; 
+  // --- FIN DE CAMBIOS ---
 
   @IsDateString()
   readonly fecha: string;
-
-    // --- CAMBIO AQUÍ ---
-    @IsUUID() // Ahora validamos que sea un UUID
-    @IsNotEmpty()
-    readonly vehiculoId: string; // Antes se llamaba 'recorridoId'
 }

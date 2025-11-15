@@ -1,7 +1,8 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
-import { Vehiculo } from '../vehiculos/vehiculo.entity'; // <-- 1. Importar
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import { Vehiculo } from '../vehiculos/vehiculo.entity'; 
+import { Gasto } from '../gastos/gasto.entity'; // <-- 1. IMPORTAR GASTO
 
-@Entity('personal') // Crea la tabla 'personal'
+@Entity('personal')
 export class Personal {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -10,28 +11,35 @@ export class Personal {
   nombre: string;
 
   @Column('varchar')
-  puesto: string; // Ej: 'Chofer', 'Asistente', 'Administrativo'
+  puesto: string; 
 
   @Column('varchar', { nullable: true })
-  contacto: string; // Teléfono
+  contacto: string; 
 
   @Column('float', { nullable: true })
   salario: number;
 
   @Column('date', { nullable: true })
-  fechaContratacion: string; // Formato YYYY-MM-DD
-
-  // --- CAMPO MODIFICADO ---
-  // Antes: @Column('varchar') recorridoId: string;
-  @Column('uuid', { nullable: true }) // Ahora es un UUID y puede ser nulo
-  vehiculoId: string;
-
-  // --- RELACIÓN AÑADIDA ---
-  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.personal, { nullable: true, eager: true }) // eager: true carga el vehículo automáticamente
-  vehiculo: Vehiculo;
+  fechaContratacion: string; 
 
   @Column('varchar', { default: 'activo' })
-  estado: string; // 'activo', 'inactivo', 'eliminado'
+  estado: string; 
+
+  // --- CAMPO MODIFICADO (para conectar con Vehiculo) ---
+  @Column('uuid', { nullable: true }) 
+  vehiculoId: string;
+  
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.personal, { 
+    nullable: true, 
+    eager: true,
+    onDelete: 'SET NULL'
+  })
+  @JoinColumn({ name: 'vehiculoId' })
+  vehiculo: Vehiculo;
+
+  // --- RELACIÓN AÑADIDA (para conectar con Gasto) ---
+  @OneToMany(() => Gasto, (gasto) => gasto.personal)
+  gastos: Gasto[];
 
   @CreateDateColumn()
   createdAt: Date;

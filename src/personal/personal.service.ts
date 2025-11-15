@@ -56,14 +56,28 @@ export class PersonalService {
 
   // --- ACTUALIZAR (o cambiar estado) ---
   async update(id: string, updatePersonalDto: UpdatePersonalDto): Promise<Personal> {
-    const personal = await this.personalRepository.preload({
-      id: id,
-      ...updatePersonalDto,
+    const personalExistente = await this.personalRepository.findOne({ 
+      where: { id: id },
+      relations: ['vehiculo'] 
     });
-    if (!personal) {
+
+    if (!personalExistente || personalExistente.estado === 'eliminado') {
       throw new NotFoundException(`Personal con id ${id} no encontrado`);
     }
-    return this.personalRepository.save(personal);
+
+    const personalActualizado = await this.personalRepository.preload({
+      ...personalExistente,
+      ...updatePersonalDto,  
+    });
+    
+    // --- ¡ESTA ES LA VALIDACIÓN QUE FALTABA! ---
+    // (Arregla el error de "sobrecarga" y "undefined")
+    if (!personalActualizado) {
+      throw new NotFoundException(`No se pudo cargar el personal para actualizar`);
+    }
+    // --- FIN DE LA CORRECCIÓN ---
+
+    return this.personalRepository.save(personalActualizado);
   }
 
   // --- ELIMINAR (Borrado Físico) ---

@@ -1,7 +1,8 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
-import { Vehiculo } from '../vehiculos/vehiculo.entity'; // <-- 1. Importar
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Vehiculo } from '../vehiculos/vehiculo.entity';
+import { Personal } from '../personal/personal.entity'; // <-- 1. IMPORTAR PERSONAL
 
-@Entity('gastos') // Crea la tabla 'gastos'
+@Entity('gastos')
 export class Gasto {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -10,25 +11,42 @@ export class Gasto {
   descripcion: string;
 
   @Column('varchar')
-  categoria: string; // 'combustible', 'mantenimiento', 'salarios', 'otros'
+  categoria: string; 
 
-  // --- CAMPO MODIFICADO ---
-  // Antes: @Column('varchar') recorridoId: string;
-  @Column('uuid', { nullable: true }) // Ahora es un UUID y puede ser nulo
-  vehiculoId: string;
-
-  // --- RELACIÓN AÑADIDA ---
-  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.gastos, { nullable: true, eager: true }) // eager: true carga el vehículo automáticamente
-  vehiculo: Vehiculo;
-
-  @Column('float')
+  // --- 2. CAMBIO DE LÓGICA ---
+  @Column('float', { nullable: true }) // Ahora puede ser nulo (si es salario)
   monto: number;
 
   @Column('date')
-  fecha: string; // Formato YYYY-MM-DD
+  fecha: string; 
 
   @Column('varchar', { default: 'activo' })
-  estado: string; // 'activo', 'inactivo', 'eliminado'
+  estado: string; 
+
+  // --- CAMPO REFACTORIZADO (Vehículo) ---
+  @Column('uuid', { nullable: true }) 
+  vehiculoId: string;
+  
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.gastos, { 
+    nullable: true, 
+    eager: true, // Carga el vehículo automáticamente
+    onDelete: 'SET NULL'
+  })
+  @JoinColumn({ name: 'vehiculoId' })
+  vehiculo: Vehiculo;
+
+  // --- 3. CAMPO Y RELACIÓN AÑADIDOS (Personal) ---
+  @Column('uuid', { nullable: true }) 
+  personalId: string; // Para el salario
+
+  @ManyToOne(() => Personal, (personal) => personal.gastos, { 
+    nullable: true, 
+    eager: true, // Carga el objeto 'personal' automáticamente
+    onDelete: 'SET NULL'
+  })
+  @JoinColumn({ name: 'personalId' })
+  personal: Personal;
+  // --- FIN DE CAMBIOS ---
 
   @CreateDateColumn()
   createdAt: Date;

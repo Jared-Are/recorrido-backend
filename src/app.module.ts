@@ -9,6 +9,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
 import { PagosModule } from './pagos/pagos.module'; // <-- 1. IMPORTA EL NUEVO MÓDULO
 import { GastosModule } from './gastos/gastos.module';
 import { PersonalModule } from './personal/personal.module';
+import { VehiculosModule } from './vehiculos/vehiculos.module';
 
 @Module({
   imports: [
@@ -36,7 +37,8 @@ import { PersonalModule } from './personal/personal.module';
     UsuariosModule,
     PagosModule, // <-- 2. AÑÁDELO AQUÍ
     GastosModule,
-    PersonalModule
+    PersonalModule,
+    VehiculosModule
   ],
   controllers: [AppController],
   providers: [AppService],
