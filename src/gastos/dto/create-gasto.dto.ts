@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsDateString, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsDateString, IsOptional, IsIn, IsUUID } from 'class-validator';
 
 export class CreateGastoDto {
   @IsString()
@@ -20,4 +20,9 @@ export class CreateGastoDto {
 
   @IsDateString()
   readonly fecha: string;
+
+    // --- CAMBIO AQUÍ ---
+    @IsUUID() // Ahora validamos que sea un UUID
+    @IsNotEmpty()
+    readonly vehiculoId: string; // Antes se llamaba 'recorridoId'
 }

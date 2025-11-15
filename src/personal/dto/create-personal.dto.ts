@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsDateString, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsDateString, IsOptional, IsIn, IsUUID} from 'class-validator';
 
 export class CreatePersonalDto {
   @IsString()
@@ -22,8 +22,8 @@ export class CreatePersonalDto {
   @IsOptional()
   readonly fechaContratacion: string;
   
-  @IsString()
-  @IsOptional()
-  @IsIn(['recorridoA', 'recorridoB', 'N/A'])
-  readonly recorridoAsignado: string;
+  // --- CAMBIO AQUÍ ---
+  @IsUUID() // Ahora validamos que sea un UUID
+  @IsNotEmpty()
+  readonly vehiculoId: string; // Antes se llamaba 'recorridoId'
 }

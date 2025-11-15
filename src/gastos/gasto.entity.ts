@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+import { Vehiculo } from '../vehiculos/vehiculo.entity'; // <-- 1. Importar
 
 @Entity('gastos') // Crea la tabla 'gastos'
 export class Gasto {
@@ -11,8 +12,14 @@ export class Gasto {
   @Column('varchar')
   categoria: string; // 'combustible', 'mantenimiento', 'salarios', 'otros'
 
-  @Column('varchar', { nullable: true })
-  microbus: string; // 'Microbús 01', 'Microbús 02', 'Ambos', 'N/A'
+  // --- CAMPO MODIFICADO ---
+  // Antes: @Column('varchar') recorridoId: string;
+  @Column('uuid', { nullable: true }) // Ahora es un UUID y puede ser nulo
+  vehiculoId: string;
+
+  // --- RELACIÓN AÑADIDA ---
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.gastos, { nullable: true, eager: true }) // eager: true carga el vehículo automáticamente
+  vehiculo: Vehiculo;
 
   @Column('float')
   monto: number;

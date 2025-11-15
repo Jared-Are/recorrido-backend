@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, DeleteDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+import { Vehiculo } from '../vehiculos/vehiculo.entity'; // <-- 1. Importar
 
 @Entity('alumnos')
 export class Alumno {
@@ -8,27 +9,37 @@ export class Alumno {
   @Column('varchar')
   nombre: string;
 
+  // ... (tutor, grado, contacto, direccion, precio, activo, etc. siguen igual)
   @Column('varchar')
-  tutor: string; // Nuevo
+  tutor: string;
 
   @Column('varchar')
-  grado: string; // Nuevo
+  grado: string;
+
+  @Column('varchar', { nullable: true })
+  contacto: string;
 
   @Column('varchar')
-  contacto: string; // Nuevo
+  direccion: string;
+
+  @Column('float')
+  precio: number;
 
   @Column('boolean', { default: true })
-  activo: boolean; // Nuevo
+  activo: boolean;
 
-  @Column('int', { nullable: true })
-  precio: number; // Nuevo (opcional)
+  // --- CAMPO MODIFICADO ---
+  // Antes: @Column('varchar') recorridoId: string;
+  @Column('uuid', { nullable: true }) // Ahora es un UUID y puede ser nulo
+  vehiculoId: string;
 
-  @Column('varchar')
-  direccion: string; // Nuevo
+  // --- RELACIÓN AÑADIDA ---
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.alumnos, { nullable: true, eager: true }) // eager: true carga el vehículo automáticamente
+  vehiculo: Vehiculo;
+  
+  @CreateDateColumn()
+  createdAt: Date;
 
-  @Column('varchar')
-  recorridoId: string; // Nuevo
-
-  @DeleteDateColumn()
-  deletedAt: Date;
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

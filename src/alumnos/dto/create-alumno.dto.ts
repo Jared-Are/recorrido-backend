@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsBoolean, IsOptional, IsInt, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsBoolean, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class CreateAlumnoDto {
   @IsString()
@@ -14,22 +14,23 @@ export class CreateAlumnoDto {
   readonly grado: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   readonly contacto: string;
-
-  @IsBoolean()
-  @IsOptional()
-  readonly activo: boolean;
-
-  @IsInt()
-  @IsOptional()
-  readonly precio: number;
 
   @IsString()
   @IsNotEmpty()
   readonly direccion: string;
 
-  @IsString()
-  @IsIn(['recorridoA', 'recorridoB']) // Valida el tipo exacto
-  readonly recorridoId: string;
+  @IsNumber()
+  @Min(0)
+  readonly precio: number;
+
+  @IsBoolean()
+  @IsOptional() // El servicio lo pone 'true' por defecto
+  readonly activo: boolean;
+
+  // --- CAMBIO AQUÍ ---
+  @IsUUID() // Ahora validamos que sea un UUID
+  @IsNotEmpty()
+  readonly vehiculoId: string; // Antes se llamaba 'recorridoId'
 }

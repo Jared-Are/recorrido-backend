@@ -28,8 +28,4 @@ export class CreateVehiculoDto {
   @IsOptional()
   readonly capacidad: number;
   
-  @IsString()
-  @IsOptional()
-  @IsIn(['recorridoA', 'recorridoB', 'N/A'])
-  readonly recorridoAsignado: string;
 }

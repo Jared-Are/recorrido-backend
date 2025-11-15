@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+import { Vehiculo } from '../vehiculos/vehiculo.entity'; // <-- 1. Importar
 
 @Entity('personal') // Crea la tabla 'personal'
 export class Personal {
@@ -20,8 +21,14 @@ export class Personal {
   @Column('date', { nullable: true })
   fechaContratacion: string; // Formato YYYY-MM-DD
 
-  @Column('varchar', { nullable: true })
-  recorridoAsignado: string; // Ej: 'recorridoA', 'recorridoB', 'N/A'
+  // --- CAMPO MODIFICADO ---
+  // Antes: @Column('varchar') recorridoId: string;
+  @Column('uuid', { nullable: true }) // Ahora es un UUID y puede ser nulo
+  vehiculoId: string;
+
+  // --- RELACIÓN AÑADIDA ---
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.personal, { nullable: true, eager: true }) // eager: true carga el vehículo automáticamente
+  vehiculo: Vehiculo;
 
   @Column('varchar', { default: 'activo' })
   estado: string; // 'activo', 'inactivo', 'eliminado'

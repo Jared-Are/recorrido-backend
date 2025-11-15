@@ -1,12 +1,15 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Alumno } from '../alumnos/alumno.entity';
+import { Personal } from '../personal/personal.entity';
+import { Gasto } from '../gastos/gasto.entity';
 
-@Entity('vehiculos') // Crea la tabla 'vehiculos'
+@Entity('vehiculos')
 export class Vehiculo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column('varchar')
-  nombre: string; // Ej: "Microbús 01", "Bus Escolar Grande"
+  nombre: string; // "Microbús 01", "Bus Azul y Blanco"
 
   @Column('varchar', { unique: true })
   placa: string;
@@ -23,8 +26,9 @@ export class Vehiculo {
   @Column('int', { nullable: true })
   capacidad: number;
 
-  @Column('varchar', { nullable: true })
-  recorridoAsignado: string; // Ej: 'recorridoA', 'recorridoB', 'N/A'
+  // --- CAMPO ELIMINADO ---
+  // @Column('varchar', { nullable: true })
+  // recorridoAsignado: string; // <-- ESTO SE VA. No tiene sentido.
 
   @Column('varchar', { default: 'activo' })
   estado: string; // 'activo', 'en mantenimiento', 'inactivo', 'eliminado'
@@ -34,4 +38,17 @@ export class Vehiculo {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  // --- RELACIONES AÑADIDAS ---
+  // Un Vehículo puede tener muchos Alumnos
+  @OneToMany(() => Alumno, (alumno) => alumno.vehiculo)
+  alumnos: Alumno[];
+
+  // Un Vehículo puede tener mucho Personal asignado
+  @OneToMany(() => Personal, (personal) => personal.vehiculo)
+  personal: Personal[];
+
+  // Un Vehículo puede tener muchos Gastos
+  @OneToMany(() => Gasto, (gasto) => gasto.vehiculo)
+  gastos: Gasto[];
 }
