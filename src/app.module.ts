@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { PagosModule } from './pagos/pagos.module'; // <-- 1. IMPORTA EL NUEVO MÓDULO
 import { GastosModule } from './gastos/gastos.module';
+import { PersonalModule } from './personal/personal.module';
 
 @Module({
   imports: [
@@ -34,7 +35,8 @@ import { GastosModule } from './gastos/gastos.module';
     AuthModule,
     UsuariosModule,
     PagosModule, // <-- 2. AÑÁDELO AQUÍ
-    GastosModule
+    GastosModule,
+    PersonalModule
   ],
   controllers: [AppController],
   providers: [AppService],
