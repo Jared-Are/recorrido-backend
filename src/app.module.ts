@@ -10,6 +10,7 @@ import { PagosModule } from './pagos/pagos.module'; // <-- 1. IMPORTA EL NUEVO M
 import { GastosModule } from './gastos/gastos.module';
 import { PersonalModule } from './personal/personal.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
+import { AvisosModule } from './avisos/avisos.module';
 
 @Module({
   imports: [
@@ -38,7 +39,8 @@ import { VehiculosModule } from './vehiculos/vehiculos.module';
     PagosModule, // <-- 2. AÑÁDELO AQUÍ
     GastosModule,
     PersonalModule,
-    VehiculosModule
+    VehiculosModule,
+    AvisosModule
   ],
   controllers: [AppController],
   providers: [AppService],
