@@ -8,5 +8,6 @@ import { Vehiculo } from './vehiculo.entity';
   imports: [TypeOrmModule.forFeature([Vehiculo])], // Conecta la Entidad
   controllers: [VehiculosController],
   providers: [VehiculosService],
+  exports: [TypeOrmModule], // <-- ¡AÑADE ESTA LÍNEA!
 })
 export class VehiculosModule {}
