@@ -1,7 +1,8 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Alumno } from '../alumnos/alumno.entity';
 import { Personal } from '../personal/personal.entity';
 import { Gasto } from '../gastos/gasto.entity';
+import { User } from '../users/user.entity';
 
 @Entity('vehiculos')
 export class Vehiculo {
@@ -51,4 +52,15 @@ export class Vehiculo {
   // Un Vehículo puede tener muchos Gastos
   @OneToMany(() => Gasto, (gasto) => gasto.vehiculo)
   gastos: Gasto[];
+
+// --- AÑADE ESTO ---
+  // Relación: Un Vehículo tiene UN Chofer (que es un User)
+  @ManyToOne(() => User, (user) => user.vehiculoAsignadoComoChofer)
+  @JoinColumn({ name: 'choferId' }) // Asumimos que quieres una columna 'choferId'
+  chofer: User;
+
+  // --- AÑADE ESTO ---
+  // Relación: Un Vehículo tiene MUCHOS Asistentes (que son Users)
+  @OneToMany(() => User, (user) => user.vehiculo)
+  personalAsignado: User[];
 }

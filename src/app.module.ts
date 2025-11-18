@@ -3,14 +3,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AlumnosModule } from './alumnos/alumnos.module';
-import { AsistenciasModule } from './asistencias/asistencias.module';
+import { AsistenciaModule } from './asistencias/asistencia.module';
 import { AuthModule } from './auth/auth.module';
-import { UsuariosModule } from './usuarios/usuarios.module';
+import { UsersModule } from './users/users.module';
 import { PagosModule } from './pagos/pagos.module'; // <-- 1. IMPORTA EL NUEVO MÓDULO
 import { GastosModule } from './gastos/gastos.module';
 import { PersonalModule } from './personal/personal.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { AvisosModule } from './avisos/avisos.module';
+import { ConfiguracionModule } from './configuracion/configuracion.module';
+import { DiasNoLectivosController } from './dias-no-lectivos/dias-no-lectivos.controller';
 
 @Module({
   imports: [
@@ -33,14 +35,16 @@ import { AvisosModule } from './avisos/avisos.module';
     
     // Tus módulos siguen igual
     AlumnosModule,
-    AsistenciasModule,
+    AsistenciaModule,
     AuthModule,
-    UsuariosModule,
+    UsersModule,
     PagosModule, // <-- 2. AÑÁDELO AQUÍ
     GastosModule,
     PersonalModule,
     VehiculosModule,
-    AvisosModule
+    AvisosModule,
+    ConfiguracionModule,
+    DiasNoLectivosController
   ],
   controllers: [AppController],
   providers: [AppService],
