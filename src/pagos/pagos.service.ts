@@ -158,6 +158,7 @@ export class PagosService {
       where: { 
         alumnoId: In(alumnoIds) // Usa el operador 'In' de TypeOrm
       },
+      relations: ['alumno'], // Incluye la relación con Alumno
       order: { 
         fecha: 'DESC' // Ordenar por fecha descendente
       }
