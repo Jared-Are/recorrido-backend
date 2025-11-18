@@ -17,6 +17,13 @@ export class AvisosController {
     return this.avisosService.findAll();
   }
 
+
+
+  @Get('para-tutor')
+  findAllParaTutor() {
+    return this.avisosService.findAllParaTutor();
+  }
+
   // --- ARREGLO AQUÍ ---
   // Las rutas estáticas (texto fijo) van PRIMERO
   @Get('para-asistente')
