@@ -1,5 +1,15 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
-import { Vehiculo } from '../vehiculos/vehiculo.entity'; // <-- 1. Importar
+// --- IMPORTACIONES ARRIBA ---
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+} from 'typeorm';
+import { Vehiculo } from '../vehiculos/vehiculo.entity';
+import { Asistencia } from '../asistencias/asistencia.entity';
 
 @Entity('alumnos')
 export class Alumno {
@@ -9,7 +19,6 @@ export class Alumno {
   @Column('varchar')
   nombre: string;
 
-  // ... (tutor, grado, contacto, direccion, precio, activo, etc. siguen igual)
   @Column('varchar')
   tutor: string;
 
@@ -22,24 +31,28 @@ export class Alumno {
   @Column('varchar')
   direccion: string;
 
-  @Column('float', { default: 0 }) // <-- AÑADE ESTO
+  @Column('float', { default: 0 })
   precio: number;
 
   @Column('boolean', { default: true })
   activo: boolean;
 
-  // --- CAMPO MODIFICADO ---
-  // Antes: @Column('varchar') recorridoId: string;
-  @Column('uuid', { nullable: true }) // Ahora es un UUID y puede ser nulo
+  @Column('uuid', { nullable: true })
   vehiculoId: string;
 
-  // --- RELACIÓN AÑADIDA ---
-  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.alumnos, { nullable: true, eager: true }) // eager: true carga el vehículo automáticamente
+  @ManyToOne(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.alumnos, {
+    nullable: true,
+    eager: true,
+  })
   vehiculo: Vehiculo;
-  
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  // --- RELACIÓN INVERSA A ASISTENCIA (¡Esta ya está correcta!) ---
+  @OneToMany(() => Asistencia, (asistencia: Asistencia) => asistencia.alumno)
+  asistencias: Asistencia[];
 }

@@ -1,14 +1,4 @@
-import { Alumno } from '../alumnos/alumno.entity'; // <-- Asumo que la tienes aquí
-// Minimal local User entity as a stub so the relation resolves when the external module is missing.
-// If you have a real users/user.entity.ts, remove this stub and restore the import above.
-@Entity('users')
-export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column({ nullable: true })
-  nombre?: string;
-}
+// --- IMPORTACIONES ARRIBA ---
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -18,11 +8,15 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
+import { Alumno } from '../alumnos/alumno.entity';
+import { User } from '../users/user.entity'; // <-- Esta es la ÚNICA importación de User
+
+// --- CLASE STUB ELIMINADA ---
+// (La clase User que estaba aquí fue borrada)
 
 export type EstadoAsistencia = 'presente' | 'ausente';
 
 @Entity('asistencias')
-// Índice para evitar duplicados: un alumno solo puede tener un registro por fecha
 @Index(['fecha', 'alumnoId'], { unique: true })
 export class Asistencia {
   @PrimaryGeneratedColumn('uuid')
@@ -37,8 +31,10 @@ export class Asistencia {
   })
   estado: EstadoAsistencia;
 
-  // --- Relación con Alumno ---
-  @ManyToOne(() => Alumno, { onDelete: 'CASCADE' })
+  // --- Relación con Alumno (¡Esta ya está correcta!) ---
+  @ManyToOne(() => Alumno, (alumno: Alumno) => alumno.asistencias, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'alumnoId' })
   alumno: Alumno;
 
@@ -46,7 +42,7 @@ export class Asistencia {
   alumnoId: string;
 
   // --- Relación con Asistente (User) ---
-  @ManyToOne(() => User, { onDelete: 'SET NULL' }) // Si se borra el user, el registro queda
+  @ManyToOne(() => User, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'asistenteId' })
   asistente: User;
 
