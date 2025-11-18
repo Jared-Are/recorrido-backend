@@ -1,3 +1,5 @@
+// src/asistencias/asistencia.module.ts
+
 import { Module } from '@nestjs/common';
 import { AsistenciaService } from './asistencia.service';
 import { AsistenciaController } from './asistencia.controller';
