@@ -31,4 +31,10 @@ export class AvisosController {
   remove(@Param('id') id: string) {
     return this.avisosService.remove(id);
   }
+
+  @Get('para-asistente')
+  // @Roles('asistente') // Opcional, si tienes guard de roles
+  findAllParaAsistente() {
+    return this.avisosService.findAllParaAsistente();
+}
 }

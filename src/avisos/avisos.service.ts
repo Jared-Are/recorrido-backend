@@ -45,4 +45,15 @@ export class AvisosService {
     await this.avisoRepository.remove(aviso);
     return { message: 'Aviso eliminado correctamente' }; // Opcional: retornar un mensaje
   }
+
+  findAllParaAsistente() {
+    return this.avisoRepository.find({
+      where: [
+        { destinatario: 'personal' },
+        { destinatario: 'todos' },
+      ],
+      order: { fechaCreacion: 'DESC' },
+    });
+
+}
 }
