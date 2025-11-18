@@ -12,8 +12,7 @@ import { PersonalModule } from './personal/personal.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { AvisosModule } from './avisos/avisos.module';
 import { ConfiguracionModule } from './configuracion/configuracion.module';
-import { DiasNoLectivosController } from './dias-no-lectivos/dias-no-lectivos.controller';
-
+import { DiasNoLectivosModule } from './dias-no-lectivos/dias-no-lectivos.module'; // <-- IMPORTACIÓN CORRECTA
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -44,7 +43,7 @@ import { DiasNoLectivosController } from './dias-no-lectivos/dias-no-lectivos.co
     VehiculosModule,
     AvisosModule,
     ConfiguracionModule,
-    DiasNoLectivosController
+    DiasNoLectivosModule, // <-- AÑADE EL MÓDULO AQUÍ
   ],
   controllers: [AppController],
   providers: [AppService],
