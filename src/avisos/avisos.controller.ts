@@ -17,10 +17,19 @@ export class AvisosController {
     return this.avisosService.findAll();
   }
 
+  // --- ARREGLO AQUÍ ---
+  // Las rutas estáticas (texto fijo) van PRIMERO
+  @Get('para-asistente')
+  findAllParaAsistente() {
+    return this.avisosService.findAllParaAsistente();
+  }
+
+  // Las rutas dinámicas (con parámetros) van DESPUÉS
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.avisosService.findOne(id);
   }
+  // --- FIN DEL ARREGLO ---
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateAvisoDto: UpdateAvisoDto) {
@@ -31,10 +40,4 @@ export class AvisosController {
   remove(@Param('id') id: string) {
     return this.avisosService.remove(id);
   }
-
-  @Get('para-asistente')
-  // @Roles('asistente') // Opcional, si tienes guard de roles
-  findAllParaAsistente() {
-    return this.avisosService.findAllParaAsistente();
-}
 }
