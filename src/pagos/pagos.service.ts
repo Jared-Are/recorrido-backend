@@ -146,4 +146,21 @@ export class PagosService {
     const pago = await this.findOne(id); // Revisa si existe
     await this.pagosRepository.remove(pago);
   }
+
+  // --- NUEVO MÉTODO PARA EL TUTOR ---
+  // Busca todos los pagos de una lista de IDs de alumnos
+  async findByAlumnos(alumnoIds: string[]): Promise<Pago[]> {
+    if (!alumnoIds || alumnoIds.length === 0) {
+      return [];
+    }
+    
+    return this.pagosRepository.find({
+      where: { 
+        alumnoId: In(alumnoIds) // Usa el operador 'In' de TypeOrm
+      },
+      order: { 
+        fecha: 'DESC' // Ordenar por fecha descendente
+      }
+    });
+  }
 }
