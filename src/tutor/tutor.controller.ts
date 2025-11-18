@@ -8,7 +8,7 @@ export class TutorController {
   constructor(private readonly tutorService: TutorService) {}
 
   // ID TEMPORAL DE PRUEBA (Copia el ID de un usuario con rol 'tutor' de tu BD)
-  private readonly TEST_TUTOR_ID = 'AQUÍ_VA_UN_UUID_DE_TUTOR'; 
+  private readonly TEST_TUTOR_ID = '3805067b-d808-4e12-af35-7790db80a307'; 
 
   @Get('resumen')
   getResumen(/* @Req() req */) {
