@@ -1,5 +1,6 @@
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+import { Alumno } from '../alumnos/alumno.entity'; // <-- 1. Importar Alumno
 
 @Entity('users')
 export class User {
@@ -35,4 +36,7 @@ export class User {
   // 3. Quita forwardRef() y añade el tipo (user: User)
   @OneToMany(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.chofer)
   vehiculoAsignadoComoChofer: Vehiculo[];
+
+  @OneToMany(() => Alumno, (alumno: Alumno) => alumno.tutorUser)
+  hijos: Alumno[];
 }

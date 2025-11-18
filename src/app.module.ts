@@ -13,6 +13,7 @@ import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { AvisosModule } from './avisos/avisos.module';
 import { ConfiguracionModule } from './configuracion/configuracion.module';
 import { DiasNoLectivosModule } from './dias-no-lectivos/dias-no-lectivos.module'; // <-- IMPORTACIÓN CORRECTA
+import { TutorModule } from './tutor/tutor.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -44,6 +45,7 @@ import { DiasNoLectivosModule } from './dias-no-lectivos/dias-no-lectivos.module
     AvisosModule,
     ConfiguracionModule,
     DiasNoLectivosModule, // <-- AÑADE EL MÓDULO AQUÍ
+    TutorModule
   ],
   controllers: [AppController],
   providers: [AppService],
