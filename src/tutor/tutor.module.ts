@@ -10,13 +10,15 @@ import { Aviso } from '../avisos/aviso.entity';
 import { UsersModule } from '../users/users.module';
 import { AlumnosModule } from '../alumnos/alumnos.module';
 import { AvisosModule } from '../avisos/avisos.module';
+import { PagosModule } from 'src/pagos/pagos.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Alumno, Asistencia, Aviso]),
     UsersModule,
     AlumnosModule,
-    AvisosModule
+    AvisosModule,
+    PagosModule
     // Importa AsistenciaModule si exporta TypeOrmModule, si no, forFeature está bien aquí
   ],
   controllers: [TutorController],
