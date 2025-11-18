@@ -5,6 +5,8 @@ import { User } from '../users/user.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 import { Asistencia } from '../asistencias/asistencia.entity';
 import { Aviso } from '../avisos/aviso.entity';
+// 1. IMPORTAR EL SERVICIO DE PAGOS
+import { PagosService } from '../pagos/pagos.service'; 
 
 @Injectable()
 export class TutorService {
@@ -13,6 +15,8 @@ export class TutorService {
     @InjectRepository(Alumno) private alumnoRepository: Repository<Alumno>,
     @InjectRepository(Asistencia) private asistenciaRepository: Repository<Asistencia>,
     @InjectRepository(Aviso) private avisoRepository: Repository<Aviso>,
+    // 2. INYECTAR EL SERVICIO DE PAGOS AQUÍ
+    private readonly pagosService: PagosService, 
   ) {}
 
   // Obtener resumen para el Dashboard
@@ -22,8 +26,6 @@ export class TutorService {
       where: { tutorUserId: userId },
       relations: ['vehiculo'], // Para saber la ruta
     });
-
-    const hijosIds = hijos.map(h => h.id);
 
     // 2. Obtener asistencia de HOY
     const hoy = new Date().toISOString().split('T')[0];
@@ -48,23 +50,26 @@ export class TutorService {
       };
     });
 
-    // 3. --- CAMBIO AQUÍ: Obtener lista de avisos (Top 5) ---
+    // 3. Obtener lista de avisos (Top 5)
     const avisos = await this.avisoRepository.find({
       where: [{ destinatario: 'tutores' }, { destinatario: 'todos' }],
       order: { fechaCreacion: 'DESC' },
       take: 5, // Traemos los últimos 5 para el contador
     });
 
+    // (Opcional: Podrías calcular el monto pendiente real aquí usando this.pagosService si quisieras)
+
     return {
       hijos: estadoHijos,
-      avisos, // <--- Devolvemos el array 'avisos' en lugar de 'ultimoAviso'
+      avisos, 
       pagos: {
         montoPendiente: 0, 
         estado: 'al_dia'
       }
     };
   }
-// Historial de asistencias
+
+  // Historial de asistencias
   async getAsistencias(userId: string) {
     const hijos = await this.alumnoRepository.find({
       where: { tutorUserId: userId },
@@ -85,5 +90,39 @@ export class TutorService {
     }));
 
     return historial;
+  }
+
+  // Historial de Pagos
+  async getPagos(userId: string) {
+    // LOG 1: Ver si llega el ID del tutor correcto
+    console.log("🔎 1. Buscando hijos para Tutor ID:", userId);
+
+    const hijos = await this.alumnoRepository.find({
+      where: { tutorUserId: userId },
+      select: ['id', 'nombre'] // Seleccionamos nombre para identificarlo fácil
+    });
+
+    // LOG 2: Ver qué hijos encontró
+    console.log("🔎 2. Hijos encontrados:", JSON.stringify(hijos));
+
+    if (hijos.length === 0) {
+        console.log("⚠️ No se encontraron hijos. Retornando array vacío.");
+        return [];
+    }
+
+    const hijosIds = hijos.map(h => h.id);
+    // LOG 3: Ver los IDs exactos que vamos a buscar en pagos
+    console.log("🔎 3. IDs de hijos para buscar pagos:", hijosIds);
+
+    // Ahora sí funcionará porque pagosService está inyectado
+    const pagos = await this.pagosService.findByAlumnos(hijosIds);
+    
+    // LOG 4: Ver qué pagos encontró la base de datos
+    console.log(`🔎 4. Pagos encontrados: ${pagos.length}`);
+    if (pagos.length > 0) {
+        console.log("   Ejemplo de pago:", JSON.stringify(pagos[0]));
+    }
+
+    return pagos;
   }
 }
