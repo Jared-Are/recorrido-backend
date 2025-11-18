@@ -20,4 +20,10 @@ export class TutorController {
   getAsistencias(/* @Req() req */) {
     return this.tutorService.getAsistencias(this.TEST_TUTOR_ID);
   }
+
+  // --- ¿TIENES ESTA PARTE? ---
+  @Get('pagos') // <--- ¡ESTO ES LO QUE FALTA!
+  getPagos() {
+    return this.tutorService.getPagos(this.TEST_TUTOR_ID);
+  }
 }
