@@ -1,25 +1,23 @@
-// src/asistencias/asistencia.module.ts
-
 import { Module } from '@nestjs/common';
 import { AsistenciaService } from './asistencia.service';
 import { AsistenciaController } from './asistencia.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Asistencia } from './asistencia.entity';
+import { Asistencia } from './asistencia.entity'; // <-- Solo importa su PROPIA entidad
 
-// --- IMPORTA LOS MÓDULOS, NO LAS ENTIDADES ---
+// --- IMPORTA LOS MÓDULOS DE LOS QUE DEPENDES ---
 import { UsersModule } from '../users/users.module';
-import { AlumnosModule } from '../alumnos/alumnos.module'; // Asumo que se llama así
-import { VehiculosModule } from '../vehiculos/vehiculos.module'; // Asumo que se llama así
-import { AvisosModule } from '../avisos/avisos.module'; // Asumo que se llama así
+import { AlumnosModule } from '../alumnos/alumnos.module';
+import { VehiculosModule } from '../vehiculos/vehiculos.module';
+import { AvisosModule } from '../avisos/avisos.module';
 import { ConfiguracionModule } from '../configuracion/configuracion.module';
 import { DiasNoLectivosModule } from '../dias-no-lectivos/dias-no-lectivos.module';
 
 @Module({
   imports: [
-    // 1. Registra SOLAMENTE la entidad de Asistencia
+    // 1. Registra SOLAMENTE la entidad 'Asistencia'
     TypeOrmModule.forFeature([Asistencia]),
 
-    // 2. Importa los MÓDULOS que proveen los otros repositorios
+    // 2. Importa los MÓDULOS que proveen las otras entidades
     UsersModule,
     AlumnosModule,
     VehiculosModule,
