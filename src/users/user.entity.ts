@@ -23,7 +23,8 @@ export class User {
   rol: string;
 
   // Relación para el Asistente: Un asistente tiene un vehículo
-  @ManyToOne(() => Vehiculo, (v) => v.personalAsignado) // Asumiendo que 'personalAsignado' existe en Vehiculo
+  // 2. Quita forwardRef()
+  @ManyToOne(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.personalAsignado)
   @JoinColumn({ name: 'vehiculoId' })
   vehiculo: Vehiculo;
 
@@ -31,6 +32,7 @@ export class User {
   vehiculoId: string;
   
   // Relación para el Chofer (si el chofer también es un User)
-  @OneToMany(() => Vehiculo, (v) => v.chofer) // Asumiendo que 'chofer' existe en Vehiculo
+  // 3. Quita forwardRef() y añade el tipo (user: User)
+  @OneToMany(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.chofer)
   vehiculoAsignadoComoChofer: Vehiculo[];
 }

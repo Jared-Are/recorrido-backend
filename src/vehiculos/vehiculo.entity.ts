@@ -53,14 +53,14 @@ export class Vehiculo {
   @OneToMany(() => Gasto, (gasto) => gasto.vehiculo)
   gastos: Gasto[];
 
-// --- AÑADE ESTO ---
-  // Relación: Un Vehículo tiene UN Chofer (que es un User)
-  @ManyToOne(() => User, (user) => user.vehiculoAsignadoComoChofer)
-  @JoinColumn({ name: 'choferId' }) // Asumimos que quieres una columna 'choferId'
+// Relación: Un Vehículo tiene UN Chofer (que es un User)
+  // 2. Quita forwardRef() y añade el tipo (user: User)
+  @ManyToOne(() => User, (user: User) => user.vehiculoAsignadoComoChofer)
+  @JoinColumn({ name: 'choferId' })
   chofer: User;
 
-  // --- AÑADE ESTO ---
   // Relación: Un Vehículo tiene MUCHOS Asistentes (que son Users)
-  @OneToMany(() => User, (user) => user.vehiculo)
+  // 3. Quita forwardRef() y añade el tipo (user: User)
+  @OneToMany(() => User, (user: User) => user.vehiculo)
   personalAsignado: User[];
 }
