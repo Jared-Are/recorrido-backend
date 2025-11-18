@@ -18,7 +18,6 @@ export class AvisosService {
   }
 
   findAll() {
-    // Ordenamos por fecha de creación, el más nuevo primero
     return this.avisoRepository.find({
       order: {
         fechaCreacion: 'DESC',
@@ -35,17 +34,18 @@ export class AvisosService {
   }
 
   async update(id: string, updateAvisoDto: UpdateAvisoDto) {
-    const aviso = await this.findOne(id); // Verifica si existe
+    const aviso = await this.findOne(id);
     const updated = this.avisoRepository.merge(aviso, updateAvisoDto);
     return this.avisoRepository.save(updated);
   }
 
   async remove(id: string) {
-    const aviso = await this.findOne(id); // Verifica si existe
+    const aviso = await this.findOne(id);
     await this.avisoRepository.remove(aviso);
-    return { message: 'Aviso eliminado correctamente' }; // Opcional: retornar un mensaje
+    return { message: 'Aviso eliminado correctamente' };
   }
 
+  // --- CORRECCIÓN AQUÍ ---
   findAllParaAsistente() {
     return this.avisoRepository.find({
       where: [
@@ -54,6 +54,15 @@ export class AvisosService {
       ],
       order: { fechaCreacion: 'DESC' },
     });
+  } // <--- TE FALTABA ESTA LLAVE DE CIERRE
 
-}
+  findAllParaTutor() {
+    return this.avisoRepository.find({
+      where: [
+        { destinatario: 'tutores' },
+        { destinatario: 'todos' },
+      ],
+      order: { fechaCreacion: 'DESC' },
+    });
+  }
 }
