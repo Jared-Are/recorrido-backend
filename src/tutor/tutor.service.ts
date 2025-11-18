@@ -48,16 +48,16 @@ export class TutorService {
       };
     });
 
-    // 3. Último aviso importante
-    const ultimoAviso = await this.avisoRepository.findOne({
+    // 3. --- CAMBIO AQUÍ: Obtener lista de avisos (Top 5) ---
+    const avisos = await this.avisoRepository.find({
       where: [{ destinatario: 'tutores' }, { destinatario: 'todos' }],
       order: { fechaCreacion: 'DESC' },
+      take: 5, // Traemos los últimos 5 para el contador
     });
 
     return {
       hijos: estadoHijos,
-      ultimoAviso,
-      // Mock de pagos por ahora (hasta que integres el módulo de pagos)
+      avisos, // <--- Devolvemos el array 'avisos' en lugar de 'ultimoAviso'
       pagos: {
         montoPendiente: 0, 
         estado: 'al_dia'
