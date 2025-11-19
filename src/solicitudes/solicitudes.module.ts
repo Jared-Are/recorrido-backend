@@ -1,17 +1,16 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Solicitud } from './solicitud.entity';
 import { SolicitudesService } from './solicitudes.service';
 import { SolicitudesController } from './solicitudes.controller';
-// Importar módulos necesarios para aprobar
-import { UsersModule } from '../users/users.module';
-import { AlumnosModule } from '../alumnos/alumnos.module';
+import { Solicitud } from './solicitud.entity';
+// IMPORTA LAS OTRAS ENTIDADES QUE USAMOS EN EL SERVICIO
+import { User } from '../users/user.entity';
+import { Alumno } from '../alumnos/alumno.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Solicitud]),
-    UsersModule,
-    AlumnosModule
+    // AGREGA USER Y ALUMNO AQUÍ PARA QUE EL SERVICIO PUEDA USARLOS
+    TypeOrmModule.forFeature([Solicitud, User, Alumno]),
   ],
   controllers: [SolicitudesController],
   providers: [SolicitudesService],
