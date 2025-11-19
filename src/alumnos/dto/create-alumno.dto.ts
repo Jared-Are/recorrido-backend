@@ -1,13 +1,27 @@
-import { IsString, IsNotEmpty, IsNumber, IsBoolean, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsBoolean, IsOptional, IsUUID, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+// Clase auxiliar para validar el objeto 'tutor'
+class DatosTutorDto {
+  @IsString()
+  @IsNotEmpty()
+  nombre: string;
+
+  @IsString()
+  @IsNotEmpty()
+  telefono: string;
+}
 
 export class CreateAlumnoDto {
   @IsString()
   @IsNotEmpty()
   readonly nombre: string;
 
-  @IsString()
+  // AHORA ES UN OBJETO, NO UN STRING
   @IsNotEmpty()
-  readonly tutor: string;
+  @ValidateNested()
+  @Type(() => DatosTutorDto)
+  readonly tutor: DatosTutorDto;
 
   @IsString()
   @IsNotEmpty()
@@ -26,11 +40,10 @@ export class CreateAlumnoDto {
   readonly precio: number;
 
   @IsBoolean()
-  @IsOptional() // El servicio lo pone 'true' por defecto
+  @IsOptional()
   readonly activo: boolean;
 
-  // --- CAMBIO AQUÍ ---
-  @IsUUID() // Ahora validamos que sea un UUID
+  @IsUUID()
   @IsNotEmpty()
-  readonly vehiculoId: string; // Antes se llamaba 'recorridoId'
+  readonly vehiculoId: string;
 }

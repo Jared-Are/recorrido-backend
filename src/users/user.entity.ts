@@ -1,42 +1,66 @@
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
-import { Alumno } from '../alumnos/alumno.entity'; // <-- 1. Importar Alumno
+import { Alumno } from '../alumnos/alumno.entity';
+
+// Enums para evitar errores de texto
+export enum UserStatus {
+  INVITADO = 'INVITADO',
+  ACTIVO = 'ACTIVO',
+}
+
+export enum UserRole {
+  PROPIETARIO = 'propietario',
+  ASISTENTE = 'asistente',
+  TUTOR = 'tutor',
+}
 
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
-  email: string;
+  @Column({ nullable: true }) // Email opcional
+  email: string  | null;
 
-  @Column({ select: false }) // No seleccionar la contraseña por defecto
-  contrasena: string;
+  @Column({ unique: true }) // Teléfono obligatorio y único
+  telefono: string;
+
+  @Column({ select: false, nullable: true }) // Contraseña opcional al inicio
+  contrasena?: string;
   
   @Column()
   nombre: string;
 
   @Column({
     type: 'enum',
-    enum: ['propietario', 'asistente', 'tutor'],
-    default: 'tutor',
+    enum: UserStatus,
+    default: UserStatus.INVITADO,
   })
-  rol: string;
+  estatus: UserStatus;
 
-  // Relación para el Asistente: Un asistente tiene un vehículo
-  // 2. Quita forwardRef()
-  @ManyToOne(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.personalAsignado)
+  @Column({
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.TUTOR,
+  })
+  rol: UserRole;
+
+  // Token para invitar por WhatsApp
+  @Column({ nullable: true, select: false })
+  invitationToken: string;
+
+  // --- RELACIONES ---
+
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.personalAsignado, { nullable: true })
   @JoinColumn({ name: 'vehiculoId' })
   vehiculo: Vehiculo;
 
   @Column({ nullable: true })
   vehiculoId: string;
   
-  // Relación para el Chofer (si el chofer también es un User)
-  // 3. Quita forwardRef() y añade el tipo (user: User)
-  @OneToMany(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.chofer)
+  @OneToMany(() => Vehiculo, (vehiculo) => vehiculo.chofer)
   vehiculoAsignadoComoChofer: Vehiculo[];
 
-  @OneToMany(() => Alumno, (alumno: Alumno) => alumno.tutorUser)
+  @OneToMany(() => Alumno, (alumno) => alumno.tutorUser)
   hijos: Alumno[];
 }

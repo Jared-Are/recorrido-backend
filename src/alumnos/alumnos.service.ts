@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alumno } from './alumno.entity';
+import { User, UserStatus, UserRole } from '../users/user.entity'; 
 import { CreateAlumnoDto } from './dto/create-alumno.dto';
 import { UpdateAlumnoDto } from './dto/update-alumno.dto';
 
@@ -10,69 +11,91 @@ export class AlumnosService {
   constructor(
     @InjectRepository(Alumno)
     private alumnosRepository: Repository<Alumno>,
+
+    @InjectRepository(User)
+    private usersRepository: Repository<User>,
   ) {}
 
-  // --- CREAR ---
+  // --- CREAR (Con lógica de Tutor automático) ---
   async create(createAlumnoDto: CreateAlumnoDto): Promise<Alumno> {
-    const newAlumno = this.alumnosRepository.create({
-      ...createAlumnoDto,
-      activo: true, // Por defecto al crear
+    const { tutor: datosTutor, ...datosAlumno } = createAlumnoDto;
+
+    // 1. Buscar si el tutor ya existe por teléfono
+    let usuarioTutor = await this.usersRepository.findOne({ 
+      where: { telefono: datosTutor.telefono } 
     });
+
+    // 2. Si no existe, crearlo como INVITADO
+    if (!usuarioTutor) {
+      usuarioTutor = this.usersRepository.create({
+        nombre: datosTutor.nombre,
+        telefono: datosTutor.telefono,
+        rol: UserRole.TUTOR,
+        estatus: UserStatus.INVITADO,
+        contrasena: undefined, // Sin contraseña al inicio
+      });
+      await this.usersRepository.save(usuarioTutor);
+    }
+
+    // 3. Crear el alumno asociado
+    const newAlumno = this.alumnosRepository.create({
+      ...datosAlumno,
+      tutor: datosTutor.nombre, // Guardamos el string por compatibilidad
+      tutorUser: usuarioTutor,  // Guardamos la relación real
+      activo: true,
+    });
+
     return this.alumnosRepository.save(newAlumno);
   }
 
-  // --- LEER TODOS (Activos por defecto) ---
+  // --- LEER TODOS ---
   findAll(): Promise<Alumno[]> {
     return this.alumnosRepository.find({
-      where: {
-        activo: true // El GET /alumnos normal solo trae activos
-      },
-      order: {
-        nombre: 'ASC'
-      }
-      // 'vehiculo' se carga automáticamente por el 'eager: true' en la entidad
+      where: { activo: true },
+      order: { nombre: 'ASC' },
+      relations: ['vehiculo', 'tutorUser'], // Cargar relaciones importantes
     });
   }
-
-  // --- ¡NUEVO MÉTODO AÑADIDO! ---
-  // --- LEER TODOS POR ESTADO ---
-  findAllByEstado(activo: boolean): Promise<Alumno[]> {
-     return this.alumnosRepository.find({
-      where: {
-        activo: activo // Filtra por 'activo: true' o 'activo: false'
-      },
-      order: {
-        nombre: 'ASC'
-      }
-    });
-  }
-  // --- FIN DEL NUEVO MÉTODO ---
-
 
   // --- LEER UNO ---
   async findOne(id: string): Promise<Alumno> {
-    const alumno = await this.alumnosRepository.findOneBy({ id });
+    const alumno = await this.alumnosRepository.findOne({
+        where: { id },
+        relations: ['vehiculo', 'tutorUser']
+    });
     if (!alumno) {
       throw new NotFoundException(`Alumno con id ${id} no encontrado`);
     }
     return alumno;
   }
 
-  // --- ACTUALIZAR (o cambiar estado) ---
+  // --- ACTUALIZAR ---
   async update(id: string, updateAlumnoDto: UpdateAlumnoDto): Promise<Alumno> {
+    // Sacamos 'tutor' del DTO para que preload no falle
+    const { tutor, ...datosSimples } = updateAlumnoDto;
+
     const alumno = await this.alumnosRepository.preload({
       id: id,
-      ...updateAlumnoDto,
+      ...datosSimples,
     });
+
     if (!alumno) {
       throw new NotFoundException(`Alumno con id ${id} no encontrado`);
     }
+
+    // Si mandaron datos del tutor, actualizamos el campo de texto (opcional)
+    if (tutor) {
+        alumno.tutor = tutor.nombre;
+        // Nota: Si quisieras cambiar el teléfono del User vinculado, 
+        // tendrías que hacerlo llamando al usersRepository aquí.
+    }
+
     return this.alumnosRepository.save(alumno);
   }
 
-  // --- ELIMINAR (Borrado Físico) ---
+  // --- ELIMINAR ---
   async remove(id: string): Promise<void> {
-    const alumno = await this.findOne(id); // Revisa si existe
+    const alumno = await this.findOne(id);
     await this.alumnosRepository.remove(alumno);
   }
 }

@@ -1,4 +1,3 @@
-// --- IMPORTACIONES ARRIBA ---
 import {
   Entity,
   Column,
@@ -11,7 +10,7 @@ import {
 } from 'typeorm';
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
 import { Asistencia } from '../asistencias/asistencia.entity';
-import { User } from '../users/user.entity'; // <-- 1. Importar User
+import { User } from '../users/user.entity';
 
 @Entity('alumnos')
 export class Alumno {
@@ -21,6 +20,8 @@ export class Alumno {
   @Column('varchar')
   nombre: string;
 
+  // Mantenemos esta columna "vieja" para visualización rápida, 
+  // pero la lógica real estará en tutorUser.
   @Column('varchar')
   tutor: string;
 
@@ -42,25 +43,25 @@ export class Alumno {
   @Column('uuid', { nullable: true })
   vehiculoId: string;
 
-  @ManyToOne(() => Vehiculo, (vehiculo: Vehiculo) => vehiculo.alumnos, {
-    nullable: true,
-    eager: true,
-  })
-  vehiculo: Vehiculo;
-
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 
-  // --- RELACIÓN INVERSA A ASISTENCIA (¡Esta ya está correcta!) ---
-  @OneToMany(() => Asistencia, (asistencia: Asistencia) => asistencia.alumno)
+  // --- RELACIONES ---
+
+  @ManyToOne(() => Vehiculo, (vehiculo) => vehiculo.alumnos, {
+    nullable: true,
+    eager: true,
+  })
+  vehiculo: Vehiculo;
+
+  @OneToMany(() => Asistencia, (asistencia) => asistencia.alumno)
   asistencias: Asistencia[];
 
-  // --- AÑADE ESTO ---
-  // Relación: Un Alumno tiene UN Tutor registrado en el sistema
-  @ManyToOne(() => User, (user: User) => user.hijos, { nullable: true })
+  // Relación con la cuenta de Usuario del Tutor
+  @ManyToOne(() => User, (user) => user.hijos, { nullable: true, eager: true })
   @JoinColumn({ name: 'tutorUserId' })
   tutorUser: User;
 

@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Solicitud } from './solicitud.entity';
-import { User } from '../users/user.entity';
+import { User, UserRole, UserStatus } from '../users/user.entity'; // Importa los Enums
 import { Alumno } from '../alumnos/alumno.entity';
 
 @Injectable()
@@ -13,7 +13,7 @@ export class SolicitudesService {
     @InjectRepository(Alumno) private alumnoRepo: Repository<Alumno>,
   ) {}
 
-  // 1. Crear una solicitud (pública o desde admin)
+  // 1. Crear una solicitud
   async create(datos: Partial<Solicitud>) {
     const nueva = this.solicitudRepo.create(datos);
     return this.solicitudRepo.save(nueva);
@@ -30,42 +30,60 @@ export class SolicitudesService {
     return { message: 'Solicitud rechazada/eliminada' };
   }
 
-  // 4. APROBAR (La lógica compleja)
+  // 4. APROBAR (Lógica corregida)
   async aprobar(id: string) {
     const solicitud = await this.solicitudRepo.findOneBy({ id });
     if (!solicitud) throw new NotFoundException("Solicitud no encontrada");
 
-    // A. Crear el Usuario (Tutor)
-    // Generamos un email temporal si no tiene (padre_ID@sistema.com)
-    const email = solicitud.email || `${solicitud.padreNombre.replace(/\s+/g, '.').toLowerCase()}_${id.slice(0,4)}@recorrido.com`;
+    // --- A. GESTIÓN DEL USUARIO (PADRE) ---
     
-    // Verificamos si ya existe el email
-    const existeUser = await this.userRepo.findOneBy({ email });
-    if (existeUser) throw new ConflictException("Ya existe un usuario con este email");
-
-    const nuevoTutor = this.userRepo.create({
-        nombre: solicitud.padreNombre,
-        email: email,
-        contrasena: "123456", // Contraseña por defecto
-        rol: "tutor"
+    // 1. Buscamos si el tutor ya existe por su TELÉFONO (tu identificador principal)
+    // Nota: Asumo que tu entidad Solicitud tiene un campo 'telefono' o 'telefonoContacto'
+    let tutorUser = await this.userRepo.findOne({ 
+      where: { telefono: solicitud.telefono } 
     });
-    const tutorGuardado = await this.userRepo.save(nuevoTutor);
 
-    // B. Crear el Alumno (Hijo)
+    // 2. Si NO existe, lo creamos desde cero
+    if (!tutorUser) {
+      tutorUser = this.userRepo.create({
+        nombre: solicitud.padreNombre,
+        telefono: solicitud.telefono, // Importante: pasar el teléfono
+        email: solicitud.email || null, // Email opcional
+        contrasena: undefined, // ¡SIN CONTRASEÑA! Se creará vía invitación
+        rol: UserRole.TUTOR,       // Usamos el Enum
+        estatus: UserStatus.INVITADO // Estado inicial
+      });
+      
+      // Guardamos al nuevo tutor
+      await this.userRepo.save(tutorUser);
+    } 
+    // Si YA existe (else), simplemente usamos la variable 'tutorUser' que ya encontramos
+    // para asignarle el nuevo hijo. ¡No lanzamos error!
+
+    // --- B. GESTIÓN DEL ALUMNO (HIJO) ---
     const nuevoAlumno = this.alumnoRepo.create({
         nombre: solicitud.hijoNombre,
-        tutor: solicitud.padreNombre, // Campo string legacy
-        tutorUser: tutorGuardado,     // Relación real
+        tutor: solicitud.padreNombre, // Texto plano (legacy)
+        tutorUser: tutorUser,         // Relación real con el usuario
         direccion: solicitud.direccion,
         grado: "Sin asignar",
         precio: 0,
-        activo: true
+        activo: true,
+        // Si tienes vehiculoId en la solicitud, agrégalo aquí
     });
+    
     await this.alumnoRepo.save(nuevoAlumno);
 
-    // C. Borrar la solicitud (ya se procesó)
+    // --- C. LIMPIEZA ---
+    // Borramos la solicitud porque ya fue procesada
     await this.solicitudRepo.remove(solicitud);
 
-    return { message: "Aprobado", tutor: tutorGuardado, alumno: nuevoAlumno };
+    return { 
+      message: "Solicitud Aprobada correctamente", 
+      tutor: tutorUser, 
+      alumno: nuevoAlumno,
+      // Tip: Aquí podrías retornar el 'invitationToken' si quisieras 
+      // mandar el WhatsApp inmediatamente en la respuesta del front.
+    };
   }
 }
