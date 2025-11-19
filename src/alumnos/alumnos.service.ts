@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alumno } from './alumno.entity';
@@ -16,32 +16,59 @@ export class AlumnosService {
     private usersRepository: Repository<User>,
   ) {}
 
-  // --- CREAR (Con lógica de Tutor automático) ---
+  // --- CREAR (Con lógica de Tutor automático y Sanitización) ---
   async create(createAlumnoDto: CreateAlumnoDto): Promise<Alumno> {
     const { tutor: datosTutor, ...datosAlumno } = createAlumnoDto;
 
-    // 1. Buscar si el tutor ya existe por teléfono
-    let usuarioTutor = await this.usersRepository.findOne({ 
-      where: { telefono: datosTutor.telefono } 
-    });
+    // 1. SANITIZACIÓN DE DATOS (¡ESTO ES LA CLAVE!)
+    // Convertimos cadenas vacías "" a undefined para evitar conflictos UNIQUE
+    const telefonoTutor = datosTutor.telefono?.trim() || undefined;
+    // Si el DTO no tiene email, usamos undefined. Si viene vacío "", lo forzamos a undefined.
+    const emailTutor = (datosTutor as any).email?.trim() || undefined; 
 
-    // 2. Si no existe, crearlo como INVITADO
-    if (!usuarioTutor) {
-      usuarioTutor = this.usersRepository.create({
-        nombre: datosTutor.nombre,
-        telefono: datosTutor.telefono,
-        rol: UserRole.TUTOR,
-        estatus: UserStatus.INVITADO,
-        contrasena: undefined, // Sin contraseña al inicio
-      });
-      await this.usersRepository.save(usuarioTutor);
+    if (!telefonoTutor) {
+       throw new BadRequestException("El teléfono del tutor es obligatorio");
     }
 
-    // 3. Crear el alumno asociado
+    // 2. BUSCAR SI EL TUTOR YA EXISTE (Por teléfono)
+    let usuarioTutor = await this.usersRepository.findOne({ 
+      where: { telefono: telefonoTutor } 
+    });
+
+    // Validar conflicto de email si es un usuario nuevo
+    if (!usuarioTutor && emailTutor) {
+        const existeEmail = await this.usersRepository.findOne({ where: { email: emailTutor } });
+        if (existeEmail) {
+            throw new BadRequestException(`El correo ${emailTutor} ya está registrado con otro usuario.`);
+        }
+    }
+
+    // 3. SI NO EXISTE, CREARLO
+    if (!usuarioTutor) {
+      try {
+        usuarioTutor = this.usersRepository.create({
+          nombre: datosTutor.nombre,
+          telefono: telefonoTutor, // Usamos el limpio
+          email: emailTutor,       // Usamos el limpio (ahora sí permite nulos)
+          rol: UserRole.TUTOR,
+          estatus: UserStatus.INVITADO,
+          contrasena: undefined, 
+        });
+        await this.usersRepository.save(usuarioTutor);
+      } catch (error) {
+        console.error("Error creando tutor automático:", error);
+        if (error.code === '23505') { // Código de duplicado en Postgres
+             throw new BadRequestException("Error de duplicidad: El teléfono o correo ya existen.");
+        }
+        throw new BadRequestException("Error al crear el usuario del tutor.");
+      }
+    }
+
+    // 4. CREAR ALUMNO ASOCIADO
     const newAlumno = this.alumnosRepository.create({
       ...datosAlumno,
-      tutor: datosTutor.nombre, // Guardamos el string por compatibilidad
-      tutorUser: usuarioTutor,  // Guardamos la relación real
+      tutor: datosTutor.nombre, 
+      tutorUser: usuarioTutor,  
       activo: true,
     });
 
@@ -57,7 +84,7 @@ export class AlumnosService {
     });
   }
 
-  // --- LEER TODOS POR ESTADO (¡ESTA ES LA QUE FALTABA!) ---
+  // --- LEER TODOS POR ESTADO ---
   findAllByEstado(activo: boolean): Promise<Alumno[]> {
     return this.alumnosRepository.find({
       where: { activo: activo },
@@ -80,7 +107,6 @@ export class AlumnosService {
 
   // --- ACTUALIZAR ---
   async update(id: string, updateAlumnoDto: UpdateAlumnoDto): Promise<Alumno> {
-    // Sacamos 'tutor' del DTO para que preload no falle
     const { tutor, ...datosSimples } = updateAlumnoDto;
 
     const alumno = await this.alumnosRepository.preload({
@@ -92,9 +118,9 @@ export class AlumnosService {
       throw new NotFoundException(`Alumno con id ${id} no encontrado`);
     }
 
-    // Si mandaron datos del tutor, actualizamos el campo de texto (opcional)
     if (tutor) {
         alumno.tutor = tutor.nombre;
+        // Nota: Aquí también podrías actualizar datos del usuario si quisieras
     }
 
     return this.alumnosRepository.save(alumno);
