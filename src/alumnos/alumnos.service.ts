@@ -53,7 +53,16 @@ export class AlumnosService {
     return this.alumnosRepository.find({
       where: { activo: true },
       order: { nombre: 'ASC' },
-      relations: ['vehiculo', 'tutorUser'], // Cargar relaciones importantes
+      relations: ['vehiculo', 'tutorUser'], 
+    });
+  }
+
+  // --- LEER TODOS POR ESTADO (¡ESTA ES LA QUE FALTABA!) ---
+  findAllByEstado(activo: boolean): Promise<Alumno[]> {
+    return this.alumnosRepository.find({
+      where: { activo: activo },
+      order: { nombre: 'ASC' },
+      relations: ['vehiculo', 'tutorUser'],
     });
   }
 
@@ -86,8 +95,6 @@ export class AlumnosService {
     // Si mandaron datos del tutor, actualizamos el campo de texto (opcional)
     if (tutor) {
         alumno.tutor = tutor.nombre;
-        // Nota: Si quisieras cambiar el teléfono del User vinculado, 
-        // tendrías que hacerlo llamando al usersRepository aquí.
     }
 
     return this.alumnosRepository.save(alumno);
