@@ -13,7 +13,7 @@ import { CreateDiaNoLectivoDto } from './dto/create-dia-no-lectivo.dto';
 import { AuthGuard } from '@nestjs/passport'; // O tu Guard de JWT
 
 @Controller('dias-no-lectivos')
-@UseGuards(AuthGuard('jwt')) // Proteger todas las rutas
+//@UseGuards(AuthGuard('jwt')) // Proteger todas las rutas
 export class DiasNoLectivosController {
   constructor(private readonly diasNoLectivosService: DiasNoLectivosService) {}
 

@@ -6,7 +6,7 @@ import { AuthGuard } from '@nestjs/passport'; // O tu Guard de JWT
 // import { Roles } from '../auth/decorators/roles.decorator'; // (Opcional)
 
 @Controller('configuracion')
-@UseGuards(AuthGuard('jwt')) // Proteger todas las rutas
+//@UseGuards(AuthGuard('jwt')) // Proteger todas las rutas
 export class ConfiguracionController {
   constructor(private readonly configuracionService: ConfiguracionService) {}
 
