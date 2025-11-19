@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty, IsNumber, IsBoolean, IsOptional, IsUUID, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// Clase auxiliar para validar el objeto 'tutor'
+// Validamos los datos del tutor
 class DatosTutorDto {
   @IsString()
   @IsNotEmpty()
@@ -10,6 +10,11 @@ class DatosTutorDto {
   @IsString()
   @IsNotEmpty()
   telefono: string;
+
+  // IMPORTANTE: Agregamos el email aquí para que no se pierda
+  @IsOptional()
+  @IsString()
+  email?: string;
 }
 
 export class CreateAlumnoDto {
@@ -17,7 +22,6 @@ export class CreateAlumnoDto {
   @IsNotEmpty()
   readonly nombre: string;
 
-  // AHORA ES UN OBJETO, NO UN STRING
   @IsNotEmpty()
   @ValidateNested()
   @Type(() => DatosTutorDto)

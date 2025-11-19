@@ -16,55 +16,57 @@ export class AlumnosService {
     private usersRepository: Repository<User>,
   ) {}
 
-  // --- CREAR (Con lógica de Tutor automático y Sanitización) ---
+  // --- CREAR ALUMNO ---
   async create(createAlumnoDto: CreateAlumnoDto): Promise<Alumno> {
     const { tutor: datosTutor, ...datosAlumno } = createAlumnoDto;
 
-    // 1. SANITIZACIÓN DE DATOS (¡ESTO ES LA CLAVE!)
-    // Convertimos cadenas vacías "" a undefined para evitar conflictos UNIQUE
+    // 1. Limpieza de datos (Sanitización)
     const telefonoTutor = datosTutor.telefono?.trim() || undefined;
-    // Si el DTO no tiene email, usamos undefined. Si viene vacío "", lo forzamos a undefined.
+    // Accedemos al email de forma segura. Casteamos a 'any' por seguridad si el DTO no se ha actualizado
     const emailTutor = (datosTutor as any).email?.trim() || undefined; 
 
     if (!telefonoTutor) {
        throw new BadRequestException("El teléfono del tutor es obligatorio");
     }
 
-    // 2. BUSCAR SI EL TUTOR YA EXISTE (Por teléfono)
+    // 2. Buscar si el tutor ya existe (Por teléfono)
     let usuarioTutor = await this.usersRepository.findOne({ 
       where: { telefono: telefonoTutor } 
     });
 
-    // Validar conflicto de email si es un usuario nuevo
+    // 3. Validación de Email:
+    // Si es un usuario NUEVO y nos dan un email, verificamos que ese email no pertenezca a OTRO usuario
     if (!usuarioTutor && emailTutor) {
         const existeEmail = await this.usersRepository.findOne({ where: { email: emailTutor } });
         if (existeEmail) {
-            throw new BadRequestException(`El correo ${emailTutor} ya está registrado con otro usuario.`);
+            // Si esto pasa, el frontend recibe un error 400 específico
+            throw new BadRequestException(`El correo ${emailTutor} ya está registrado en el sistema con otro número de teléfono.`);
         }
     }
 
-    // 3. SI NO EXISTE, CREARLO
+    // 4. Si no existe el usuario, lo creamos
     if (!usuarioTutor) {
       try {
         usuarioTutor = this.usersRepository.create({
           nombre: datosTutor.nombre,
-          telefono: telefonoTutor, // Usamos el limpio
-          email: emailTutor,       // Usamos el limpio (ahora sí permite nulos)
+          telefono: telefonoTutor,
+          email: emailTutor, // Si es undefined, se guarda como null (correcto)
           rol: UserRole.TUTOR,
           estatus: UserStatus.INVITADO,
           contrasena: undefined, 
         });
         await this.usersRepository.save(usuarioTutor);
-      } catch (error) {
-        console.error("Error creando tutor automático:", error);
-        if (error.code === '23505') { // Código de duplicado en Postgres
-             throw new BadRequestException("Error de duplicidad: El teléfono o correo ya existen.");
+      } catch (error: any) {
+        console.error("Error BD creando tutor:", error);
+        // Manejo específico de duplicados (por si acaso falló la validación previa)
+        if (error.code === '23505') { 
+             throw new BadRequestException("Error: El teléfono o correo ingresado ya existe en otro usuario.");
         }
-        throw new BadRequestException("Error al crear el usuario del tutor.");
+        throw new BadRequestException("No se pudo registrar el tutor. Verifica los datos.");
       }
     }
 
-    // 4. CREAR ALUMNO ASOCIADO
+    // 5. Crear Alumno
     const newAlumno = this.alumnosRepository.create({
       ...datosAlumno,
       tutor: datosTutor.nombre, 
@@ -75,7 +77,7 @@ export class AlumnosService {
     return this.alumnosRepository.save(newAlumno);
   }
 
-  // --- LEER TODOS ---
+  // --- OTROS MÉTODOS ---
   findAll(): Promise<Alumno[]> {
     return this.alumnosRepository.find({
       where: { activo: true },
@@ -84,7 +86,6 @@ export class AlumnosService {
     });
   }
 
-  // --- LEER TODOS POR ESTADO ---
   findAllByEstado(activo: boolean): Promise<Alumno[]> {
     return this.alumnosRepository.find({
       where: { activo: activo },
@@ -93,7 +94,6 @@ export class AlumnosService {
     });
   }
 
-  // --- LEER UNO ---
   async findOne(id: string): Promise<Alumno> {
     const alumno = await this.alumnosRepository.findOne({
         where: { id },
@@ -105,28 +105,20 @@ export class AlumnosService {
     return alumno;
   }
 
-  // --- ACTUALIZAR ---
   async update(id: string, updateAlumnoDto: UpdateAlumnoDto): Promise<Alumno> {
     const { tutor, ...datosSimples } = updateAlumnoDto;
-
     const alumno = await this.alumnosRepository.preload({
       id: id,
       ...datosSimples,
     });
-
-    if (!alumno) {
-      throw new NotFoundException(`Alumno con id ${id} no encontrado`);
-    }
+    if (!alumno) throw new NotFoundException(`Alumno no encontrado`);
 
     if (tutor) {
         alumno.tutor = tutor.nombre;
-        // Nota: Aquí también podrías actualizar datos del usuario si quisieras
     }
-
     return this.alumnosRepository.save(alumno);
   }
 
-  // --- ELIMINAR ---
   async remove(id: string): Promise<void> {
     const alumno = await this.findOne(id);
     await this.alumnosRepository.remove(alumno);
