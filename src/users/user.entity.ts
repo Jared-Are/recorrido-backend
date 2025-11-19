@@ -28,7 +28,7 @@ export class User {
   @Column({ type: 'text', select: false, nullable: true }) 
   contrasena: string;
   
-  @Column({ type: 'text' })
+  @Column({ type: 'text', nullable: true })
   nombre: string;
 
   @Column({
