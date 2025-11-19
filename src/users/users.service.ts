@@ -22,42 +22,52 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- 3. CREAR USUARIO ---
+  // --- 3. CREAR USUARIO (Manual o desde Solicitud) ---
   async create(datos: Partial<User>) {
     try {
+      // A. SANITIZACIÓN DE DATOS
       const telefonoLimpio = datos.telefono && datos.telefono.trim() !== '' ? datos.telefono : undefined;
       const emailLimpio = datos.email && datos.email.trim() !== '' ? datos.email : undefined;
 
-      if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
+      // B. VALIDACIONES
+      if (!telefonoLimpio) {
+        throw new BadRequestException("El teléfono es obligatorio.");
+      }
 
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
-      if (existe) throw new BadRequestException(`Ya existe un usuario con el teléfono ${telefonoLimpio}`);
+      if (existe) {
+        throw new BadRequestException(`Ya existe un usuario con el teléfono ${telefonoLimpio}`);
+      }
 
+      // C. CREACIÓN
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
         nombre: datos.nombre,
         telefono: telefonoLimpio,
         email: emailLimpio,
         rol: datos.rol || UserRole.TUTOR,
-        estatus: UserStatus.INVITADO, 
-        contrasena: undefined, 
+        estatus: UserStatus.INVITADO,
+        contrasena: undefined,
       });
 
       return await this.usersRepository.save(nuevoUsuario);
 
     } catch (error) {
       console.error("Error en create user:", error); 
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException("No se pudo crear el usuario.");
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException("No se pudo crear el usuario. Revisa si el teléfono o email ya existen.");
     }
   }
 
-  // --- 4. GENERAR INVITACIÓN ---
+  // --- 4. GENERAR INVITACIÓN DE WHATSAPP ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    
     user.invitationToken = token;
     await this.usersRepository.save(user);
 
@@ -67,7 +77,7 @@ export class UsersService {
     return { 
       link: linkActivacion,
       telefono: user.telefono,
-      mensaje: `Hola ${user.nombre}, activa tu cuenta aquí: ${linkActivacion}`
+      mensaje: `Hola ${user.nombre}, te damos la bienvenida al Recorrido Escolar. Para activar tu cuenta y crear tu contraseña, entra aquí: ${linkActivacion}`
     };
   }
 
@@ -75,47 +85,55 @@ export class UsersService {
   async activarCuenta(token: string, contrasena: string) {
     const user = await this.usersRepository.findOneBy({ invitationToken: token });
 
-    if (!user) throw new NotFoundException("Token inválido o expirado.");
+    if (!user) {
+      throw new NotFoundException("Token inválido o expirado.");
+    }
 
+    // Actualizamos los datos
     user.contrasena = contrasena;
     user.estatus = UserStatus.ACTIVO;
+    
+    // Forzamos null con 'as any' para limpiar el token
     user.invitationToken = null as any; 
 
     return await this.usersRepository.save(user);
   }
 
-  // --- 6. LOGIN CON DEBUG ---
+  // --- 6. LOGIN (CON CORRECCIÓN DE PASSDB) ---
   async login(telefono: string, contrasena: string) {
-    console.log(`🔍 Intento de Login -> Teléfono: "${telefono}" | Pass: "${contrasena}"`);
+    console.log(`🔍 Intento de Login -> Teléfono: "${telefono}"`);
 
-    // 1. Buscamos por teléfono
-    const user = await this.usersRepository.findOne({ 
-      where: { telefono } 
-    });
+    // CORRECCIÓN: Usamos createQueryBuilder para forzar la lectura de 'contrasena'
+    // que tiene select: false por defecto en la entidad
+    const user = await this.usersRepository.createQueryBuilder("user")
+      .where("user.telefono = :telefono", { telefono })
+      .addSelect("user.contrasena") // <--- ¡ESTA LÍNEA ES LA QUE FALTABA!
+      .getOne();
 
     if (!user) {
       console.log("❌ Error Login: Usuario no encontrado en DB.");
       throw new UnauthorizedException("Credenciales incorrectas (Usuario no existe)");
     }
 
-    console.log(`✅ Usuario encontrado: ${user.nombre} | Estatus: ${user.estatus} | PassDB: "${user.contrasena}"`);
+    console.log(`✅ Usuario encontrado: ${user.nombre} | PassDB: "${user.contrasena}"`);
 
-    // 2. Validamos contraseña
-    // OJO: Si user.contrasena es null/undefined, esto fallará siempre
+    // Validamos contraseña
     if (!user.contrasena || user.contrasena !== contrasena) {
-      console.log("❌ Error Login: Contraseña no coincide o está vacía.");
-      throw new UnauthorizedException("Credenciales incorrectas (Contraseña errónea)");
+      console.log("❌ Error Login: Contraseña no coincide.");
+      throw new UnauthorizedException("Credenciales incorrectas");
     }
 
-    // 3. Validamos estatus
+    // Validamos estatus
     if (user.estatus !== UserStatus.ACTIVO) {
       console.log("❌ Error Login: Usuario no está ACTIVO.");
       throw new UnauthorizedException("Tu cuenta no ha sido activada. Usa el link de WhatsApp.");
     }
 
-    // 4. Éxito
     console.log("🎉 Login Exitoso");
+    
+    // Quitamos la contraseña antes de devolver el objeto
     const { contrasena: pass, invitationToken, ...result } = user;
     return result;
   }
+  
 }
