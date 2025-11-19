@@ -3,19 +3,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PagosService } from './pagos.service';
 import { PagosController } from './pagos.controller';
 import { Pago } from './pago.entity';
-import { AlumnosModule } from '../alumnos/alumnos.module';
+// 1. IMPORTA LA ENTIDAD ALUMNO
+import { Alumno } from '../alumnos/alumno.entity'; 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Pago]),
-    AlumnosModule
+    // 2. AGREGA ALUMNO AQUÍ
+    // Esto le permite al PagosService usar @InjectRepository(Alumno)
+    TypeOrmModule.forFeature([Pago, Alumno]), 
   ],
   controllers: [PagosController],
   providers: [PagosService],
-  // --- ¡ESTO ES LO QUE FALTA! ---
-  exports: [
-    PagosService, // <-- Exportar el servicio para que TutorModule lo vea
-    TypeOrmModule // Exportar TypeOrm por si acaso
-  ] 
 })
 export class PagosModule {}
