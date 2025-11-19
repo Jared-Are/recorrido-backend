@@ -22,7 +22,7 @@ export class User {
   @Column({ type: 'text', unique: true, nullable: true }) 
   email: string;
 
-  @Column({ type: 'text', unique: true }) 
+  @Column({ type: 'text', unique: true, nullable: true }) 
   telefono: string;
 
   @Column({ type: 'text', select: false, nullable: true }) 
