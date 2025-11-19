@@ -10,6 +10,18 @@ export class UsersController {
   findAll() {
     return this.usersService.findAll(); // Asumo que tienes este método
   }
+// 2. CREAR USUARIO (ESTE ES EL QUE FALTABA O FALLABA)
+  @Post()
+  create(@Body() body: any) {
+    return this.usersService.create(body);
+  }
+
+  // 3. BUSCAR UNO
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.usersService.findOne(id);
+  }
+
 
   // --- ENDPOINT PARA EL BOTÓN DE WHATSAPP ---
   @Post(':id/invitacion')
