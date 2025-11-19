@@ -21,7 +21,7 @@ export class TutorService {
   async getResumen(userId: string) {
     const hijos = await this.alumnoRepository.find({
       where: { tutorUserId: userId },
-      relations: ['vehiculo'],
+      relations: ['vehiculo'], // <-- IMPORTANTE: Traer la relación del vehículo para sacar la foto
     });
 
     const hoy = new Date().toISOString().split('T')[0];
@@ -40,6 +40,9 @@ export class TutorService {
         grado: hijo.grado,
         estadoHoy: estado,
         horaRecogida: asistencia?.fechaCreacion || null,
+        
+        // --- NUEVO CAMPO PARA LA FOTO ---
+        vehiculoFotoUrl: hijo.vehiculo?.fotoUrl || null 
       };
     });
 
@@ -49,15 +52,10 @@ export class TutorService {
       take: 5,
     });
 
-    // Calculamos pagos pendientes reales para el resumen
     const hijosIds = hijos.map(h => h.id);
     const pagos = await this.pagosService.findByAlumnos(hijosIds);
     const pagosPendientes = pagos.filter(p => p.estado === 'pendiente');
-    
-    // Sumamos lo que falta (considerando lógica de abonos si quieres, o simple suma)
-    // Aquí hacemos una suma simple de montos registrados como pendientes
-    // (Nota: Esto suma el monto del abono, no el restante, para precisión total necesitarías la lógica del frontend)
-    const montoPendiente = pagosPendientes.reduce((sum, p) => sum + p.monto, 0);
+    const montoPendiente = pagosPendientes.reduce((sum, p) => sum + Number(p.monto), 0);
 
     return {
       hijos: estadoHijos,
@@ -91,7 +89,7 @@ export class TutorService {
     return historial;
   }
 
-  // 3. Historial de Pagos (EL QUE FALTABA)
+  // 3. Historial de Pagos
   async getPagos(userId: string) {
     const hijos = await this.alumnoRepository.find({
       where: { tutorUserId: userId },
@@ -103,10 +101,6 @@ export class TutorService {
     }
 
     const hijosIds = hijos.map(h => h.id);
-    
-    // Llamada al servicio de pagos
-    const pagos = await this.pagosService.findByAlumnos(hijosIds);
-    
-    return pagos;
+    return this.pagosService.findByAlumnos(hijosIds);
   }
 }

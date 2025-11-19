@@ -12,7 +12,7 @@ import { Vehiculo } from '../vehiculos/vehiculo.entity';
 import { CreateLoteAsistenciaDto } from './dto/create-lote-asistencia.dto';
 import { Aviso } from '../avisos/aviso.entity';
 
-// --- IMPORTA LOS NUEVOS SERVICIOS ---
+// Servicios Inyectados
 import { DiasNoLectivosService } from '../dias-no-lectivos/dias-no-lectivos.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 
@@ -30,46 +30,42 @@ export class AsistenciaService {
     @InjectRepository(Aviso)
     private avisoRepository: Repository<Aviso>,
 
-    // --- INYECTA LOS NUEVOS SERVICIOS ---
     private readonly diasNoLectivosService: DiasNoLectivosService,
     private readonly configuracionService: ConfiguracionService,
   ) {}
 
-  // --- LÓGICA DE VALIDACIÓN DEL DÍA ---
+  // --- VALIDACIONES DE DÍA ---
 
   private getHoy(): { fecha: Date; fechaString: string; diaSemana: number } {
     const fecha = new Date();
-    // Ajuste para zona horaria de Nicaragua (GTM-6)
-    // Esto es opcional pero recomendado si tu servidor corre en UTC
-    fecha.setHours(fecha.getHours() - 6); 
+    // Ajuste de zona horaria si es necesario (GTM-6)
+    // fecha.setHours(fecha.getHours() - 6); 
     
-    const fechaString = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
-    const diaSemana = fecha.getDay(); // 0 = Domingo, 6 = Sábado
+    const fechaString = fecha.toISOString().split('T')[0];
+    const diaSemana = fecha.getDay();
     return { fecha, fechaString, diaSemana };
   }
 
-  // --- LÓGICA INTELIGENTE ACTUALIZADA ---
   private async checkEsDiaLectivo(): Promise<{
     esDiaLectivo: boolean;
     motivo: string | null;
   }> {
     const { fechaString, diaSemana } = this.getHoy();
 
-    // 1. Revisar fines de semana
+    // 1. Fines de semana
     if (diaSemana === 0 || diaSemana === 6) {
       return { esDiaLectivo: false, motivo: 'Fin de semana' };
     }
 
-    // 2. Revisar la tabla de Días No Lectivos (feriados, Semana Santa, etc.)
+    // 2. Días No Lectivos (Feriados/Emergencias)
     const diaNoLectivo = await this.diasNoLectivosService.checkDia(fechaString);
     if (diaNoLectivo) {
       return { esDiaLectivo: false, motivo: diaNoLectivo.motivo };
     }
 
-    // 3. Revisar la Configuración Escolar (vacaciones)
+    // 3. Configuración Escolar (Vacaciones)
     const config = await this.configuracionService.getConfig();
 
-    // Revisar si está fuera del año escolar
     if (config.inicioAnioEscolar && config.finAnioEscolar) {
       if (
         fechaString < config.inicioAnioEscolar ||
@@ -79,7 +75,6 @@ export class AsistenciaService {
       }
     }
     
-    // Revisar si está en vacaciones de medio año
     if (config.inicioVacacionesMedioAnio && config.finVacacionesMedioAnio) {
       if (
         fechaString >= config.inicioVacacionesMedioAnio &&
@@ -89,14 +84,10 @@ export class AsistenciaService {
       }
     }
 
-    // Si pasa todas las validaciones, es un día de clases
     return { esDiaLectivo: true, motivo: null };
   }
 
-  // Revisa si el asistente YA guardó la lista hoy
-  private async checkAsistenciaRegistradaHoy(
-    asistenteId: string,
-  ): Promise<boolean> {
+  private async checkAsistenciaRegistradaHoy(asistenteId: string): Promise<boolean> {
     const { fechaString } = this.getHoy();
     const count = await this.asistenciaRepository.count({
       where: {
@@ -107,17 +98,13 @@ export class AsistenciaService {
     return count > 0;
   }
 
-  // --- ENDPOINTS DEL FRONTEND (El resto del servicio sigue igual) ---
+  // --- ENDPOINTS ---
 
-  // 1. Para el Dashboard (Resumen del Día)
+  // 1. Resumen para el Asistente
   async getResumenHoy(asistenteId: string) {
     const { fechaString } = this.getHoy();
-    
-    // --- Esta función ahora es "inteligente" ---
     const { esDiaLectivo, motivo } = await this.checkEsDiaLectivo();
-    
-    const asistenciaRegistrada =
-      await this.checkAsistenciaRegistradaHoy(asistenteId);
+    const asistenciaRegistrada = await this.checkAsistenciaRegistradaHoy(asistenteId);
 
     const asistente = await this.userRepository.findOne({
       where: { id: asistenteId },
@@ -130,8 +117,9 @@ export class AsistenciaService {
 
     const vehiculo = asistente.vehiculo;
 
+    // Estadísticas
     const totalAlumnos = await this.alumnoRepository.count({
-      where: { vehiculoId: vehiculo.id }, // Corregido (sin 'estado')
+      where: { vehiculoId: vehiculo.id },
     });
     
     const presentesHoy = await this.asistenciaRepository.count({
@@ -142,8 +130,9 @@ export class AsistenciaService {
       where: { fecha: fechaString, estado: 'ausente', asistenteId },
     });
 
+    // Avisos
     const avisos = await this.avisoRepository.find({
-      where: [{ destinatario: 'personal' }, { destinatario: 'todos' }], // Corregido: 'personal' O 'todos'
+      where: [{ destinatario: 'personal' }, { destinatario: 'todos' }],
       select: ['id', 'titulo'],
       order: { fechaCreacion: 'DESC' },
       take: 5,
@@ -154,6 +143,7 @@ export class AsistenciaService {
         vehiculo: {
           placa: vehiculo.placa,
           choferNombre: vehiculo.chofer?.nombre || 'N/A',
+          fotoUrl: vehiculo.fotoUrl || null, // <--- AQUÍ SE ENVÍA LA FOTO
         },
         totalAlumnos,
         presentesHoy,
@@ -166,21 +156,16 @@ export class AsistenciaService {
     };
   }
 
-  // 2. Para la página de "Registrar Asistencia" (la lista de alumnos)
+  // 2. Lista de Alumnos para marcar
   async getAlumnosParaAsistencia(asistenteId: string) {
     const { esDiaLectivo, motivo } = await this.checkEsDiaLectivo();
     if (!esDiaLectivo) {
-      throw new BadRequestException(
-        motivo || 'Hoy no es un día lectivo, no se puede registrar asistencia.',
-      );
+      throw new BadRequestException(motivo || 'Hoy no es un día lectivo.');
     }
 
-    const asistenciaRegistrada =
-      await this.checkAsistenciaRegistradaHoy(asistenteId);
+    const asistenciaRegistrada = await this.checkAsistenciaRegistradaHoy(asistenteId);
     if (asistenciaRegistrada) {
-      throw new BadRequestException(
-        'La asistencia para el día de hoy ya fue registrada.',
-      );
+      throw new BadRequestException('La asistencia ya fue registrada hoy.');
     }
 
     const asistente = await this.userRepository.findOne({
@@ -192,7 +177,7 @@ export class AsistenciaService {
     }
 
     const alumnos = await this.alumnoRepository.find({
-      where: { vehiculoId: asistente.vehiculo.id }, // Corregido (sin 'estado')
+      where: { vehiculoId: asistente.vehiculo.id },
       select: ['id', 'nombre', 'grado', 'tutor'],
     });
 
@@ -200,31 +185,23 @@ export class AsistenciaService {
       id: a.id,
       nombre: a.nombre,
       grado: a.grado || 'N/A',
-      tutor: a.tutor || 'N/A', // Corregido (tutor es string)
+      tutor: a.tutor || 'N/A',
     }));
   }
 
-  // 3. Para guardar el formulario de asistencia
-  async registrarLote(
-    loteDto: CreateLoteAsistenciaDto,
-    asistenteId: string,
-  ) {
+  // 3. Guardar Asistencia
+  async registrarLote(loteDto: CreateLoteAsistenciaDto, asistenteId: string) {
     const { esDiaLectivo, motivo } = await this.checkEsDiaLectivo();
-    if (!esDiaLectivo) {
-      throw new BadRequestException(motivo);
-    }
-    const asistenciaRegistrada =
-      await this.checkAsistenciaRegistradaHoy(asistenteId);
-    if (asistenciaRegistrada) {
-      throw new BadRequestException('La asistencia ya fue registrada.');
-    }
+    if (!esDiaLectivo) throw new BadRequestException(motivo);
+    
+    const asistenciaRegistrada = await this.checkAsistenciaRegistradaHoy(asistenteId);
+    if (asistenciaRegistrada) throw new BadRequestException('La asistencia ya fue registrada.');
 
-    // Asignar la fecha correcta (del servidor) y el asistenteId
     const { fechaString } = this.getHoy();
     const registros = loteDto.registros.map((r) =>
       this.asistenciaRepository.create({
         ...r,
-        fecha: fechaString, // Usar la fecha del servidor, no la del cliente
+        fecha: fechaString,
         asistenteId,
       }),
     );
@@ -232,7 +209,7 @@ export class AsistenciaService {
     return this.asistenciaRepository.save(registros);
   }
 
-  // 4. Para el Historial (sin cambios en la lógica)
+  // 4. Historial
   async getHistorial(asistenteId: string, mes: string) {
     const [year, month] = mes.split('-').map(Number);
     const startDate = new Date(year, month - 1, 1);

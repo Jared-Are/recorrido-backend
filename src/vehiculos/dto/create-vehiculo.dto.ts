@@ -1,31 +1,36 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsIn, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
 
 export class CreateVehiculoDto {
   @IsString()
   @IsNotEmpty()
-  readonly nombre: string;
+  nombre: string;
 
   @IsString()
   @IsNotEmpty()
-  readonly placa: string;
-  
-  @IsString()
-  @IsOptional()
-  readonly marca: string;
+  placa: string;
 
   @IsString()
   @IsOptional()
-  readonly modelo: string;
+  marca?: string;
+
+  @IsString()
+  @IsOptional()
+  modelo?: string;
 
   @IsInt()
-  @Min(1980)
-  @Max(2030)
   @IsOptional()
-  readonly anio: number;
+  anio?: number;
 
   @IsInt()
-  @Min(1)
   @IsOptional()
-  readonly capacidad: number;
-  
+  capacidad?: number;
+
+  @IsString()
+  @IsIn(['activo', 'en mantenimiento', 'inactivo'])
+  estado: string;
+
+  // --- AGREGAR ESTO ---
+  @IsString()
+  @IsOptional()
+  fotoUrl?: string;
 }

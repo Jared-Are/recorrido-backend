@@ -1,8 +1,8 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
-import { Alumno } from '../alumnos/alumno.entity';
-import { Personal } from '../personal/personal.entity';
-import { Gasto } from '../gastos/gasto.entity';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../users/user.entity';
+import { Alumno } from '../alumnos/alumno.entity';
+// Importa Gasto si lo tienes en tu proyecto, si no, ignora esta línea
+// import { Gasto } from '../gastos/gasto.entity'; 
 
 @Entity('vehiculos')
 export class Vehiculo {
@@ -10,57 +10,39 @@ export class Vehiculo {
   id: string;
 
   @Column('varchar')
-  nombre: string; // "Microbús 01", "Bus Azul y Blanco"
+  nombre: string;
 
-  @Column('varchar', { unique: true })
+  @Column('varchar')
   placa: string;
 
-  @Column('varchar', { nullable: true })
+  @Column('varchar')
   marca: string;
 
-  @Column('varchar', { nullable: true })
+  @Column('varchar')
   modelo: string;
 
-  @Column('int', { nullable: true })
+  @Column('int')
   anio: number;
 
-  @Column('int', { nullable: true })
+  @Column('int')
   capacidad: number;
 
-  // --- CAMPO ELIMINADO ---
-  // @Column('varchar', { nullable: true })
-  // recorridoAsignado: string; // <-- ESTO SE VA. No tiene sentido.
+  @Column('varchar')
+  estado: string; // 'activo' | 'en mantenimiento'
 
-  @Column('varchar', { default: 'activo' })
-  estado: string; // 'activo', 'en mantenimiento', 'inactivo', 'eliminado'
+  // --- ESTO ES LO QUE FALTABA ---
+  @Column({ type: 'text', nullable: true })
+  fotoUrl: string;
+  // -----------------------------
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-
-  // --- RELACIONES AÑADIDAS ---
-  // Un Vehículo puede tener muchos Alumnos
-  @OneToMany(() => Alumno, (alumno) => alumno.vehiculo)
-  alumnos: Alumno[];
-
-  // Un Vehículo puede tener mucho Personal asignado
-  @OneToMany(() => Personal, (personal) => personal.vehiculo)
-  personal: Personal[];
-
-  // Un Vehículo puede tener muchos Gastos
-  @OneToMany(() => Gasto, (gasto) => gasto.vehiculo)
-  gastos: Gasto[];
-
-// Relación: Un Vehículo tiene UN Chofer (que es un User)
-  // 2. Quita forwardRef() y añade el tipo (user: User)
-  @ManyToOne(() => User, (user: User) => user.vehiculoAsignadoComoChofer)
+  // Relaciones...
+  @ManyToOne(() => User, (user) => user.vehiculoAsignadoComoChofer)
   @JoinColumn({ name: 'choferId' })
   chofer: User;
 
-  // Relación: Un Vehículo tiene MUCHOS Asistentes (que son Users)
-  // 3. Quita forwardRef() y añade el tipo (user: User)
-  @OneToMany(() => User, (user: User) => user.vehiculo)
+  @OneToMany(() => User, (user) => user.vehiculo)
   personalAsignado: User[];
+
+  @OneToMany(() => Alumno, (alumno) => alumno.vehiculo)
+  alumnos: Alumno[];
 }
