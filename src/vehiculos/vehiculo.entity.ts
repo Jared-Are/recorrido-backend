@@ -1,8 +1,10 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Alumno } from '../alumnos/alumno.entity';
-// Importa Gasto si lo tienes en tu proyecto, si no, ignora esta línea
-// import { Gasto } from '../gastos/gasto.entity'; 
+
+// --- 1. IMPORTAR LAS ENTIDADES FALTANTES ---
+import { Gasto } from '../gastos/gasto.entity';
+import { Personal } from '../personal/personal.entity';
 
 @Entity('vehiculos')
 export class Vehiculo {
@@ -28,21 +30,33 @@ export class Vehiculo {
   capacidad: number;
 
   @Column('varchar')
-  estado: string; // 'activo' | 'en mantenimiento'
+  estado: string;
 
-  // --- ESTO ES LO QUE FALTABA ---
   @Column({ type: 'text', nullable: true })
   fotoUrl: string;
-  // -----------------------------
 
-  // Relaciones...
+  // --- RELACIONES ---
+
+  // Relación con Chofer (Usuario)
   @ManyToOne(() => User, (user) => user.vehiculoAsignadoComoChofer)
   @JoinColumn({ name: 'choferId' })
   chofer: User;
 
+  // Relación con Asistentes (Usuarios con login)
   @OneToMany(() => User, (user) => user.vehiculo)
   personalAsignado: User[];
 
+  // Relación con Alumnos
   @OneToMany(() => Alumno, (alumno) => alumno.vehiculo)
   alumnos: Alumno[];
+
+  // --- 2. AGREGAR ESTAS RELACIONES PARA CORREGIR EL ERROR ---
+  
+  // Relación con Gastos
+  @OneToMany(() => Gasto, (gasto) => gasto.vehiculo)
+  gastos: Gasto[];
+
+  // Relación con Personal (Recursos Humanos / Sin login)
+  @OneToMany(() => Personal, (personal) => personal.vehiculo)
+  personal: Personal[];
 }
