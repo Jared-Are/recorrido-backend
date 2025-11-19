@@ -21,4 +21,9 @@ export class ConfiguracionController {
   updateConfig(@Body() updateConfiguracionDto: UpdateConfiguracionDto) {
     return this.configuracionService.updateConfig(updateConfiguracionDto);
   }
+
+  @Get('stats')
+  getStats() {
+    return this.configuracionService.getDashboardStats();
+  }
 }
