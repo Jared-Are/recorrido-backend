@@ -1,9 +1,10 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm'; 
+import { Repository } from 'typeorm';
 import { ConfiguracionEscolar } from './configuracion.entity';
 import { UpdateConfiguracionDto } from './dto/update-configuracion.dto';
 
+// Entidades
 import { Alumno } from '../alumnos/alumno.entity';
 import { Pago } from '../pagos/pago.entity';
 import { User } from '../users/user.entity';
@@ -38,47 +39,36 @@ export class ConfiguracionService implements OnModuleInit {
     return this.configRepository.save(updatedConfig);
   }
 
-  // --- DIAGNÓSTICO COMPLETO ---
+  // --- ESTADÍSTICAS DASHBOARD ---
   async getDashboardStats() {
-    console.log("========= INICIANDO REPORTE DASHBOARD =========");
+    // 1. Alumnos (Total)
+    const alumnosActivos = await this.alumnoRepository.count();
 
-    // 1. Alumnos
-    const alumnosTotal = await this.alumnoRepository.count();
-    console.log(`🟢 Alumnos en BD: ${alumnosTotal}`);
-
-    // 2. Personal
+    // 2. Personal (Total en tabla Personal)
     const personal = await this.personalRepository.count();
-    console.log(`🟢 Personal en BD: ${personal}`);
 
     // 3. Vehículos
     const vehiculos = await this.vehiculoRepository.count();
-    console.log(`🟢 Vehículos en BD: ${vehiculos}`);
 
-    // 4. Pagos del Mes
+    // 4. Pagos del Mes Actual
     const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     const fechaHoy = new Date();
-    // fechaHoy.setHours(fechaHoy.getHours() - 6); 
+    // fechaHoy.setHours(fechaHoy.getHours() - 6); // Descomentar si necesitas ajuste de zona horaria manual
     
     const nombreMes = meses[fechaHoy.getMonth()];
     const anio = fechaHoy.getFullYear();
     const mesString = `${nombreMes} ${anio}`;
-    
-    console.log(`📅 Mes Buscado: "${mesString}"`);
 
+    // Filtro en memoria para asegurar coincidencia de texto (case-insensitive)
     const todosPagos = await this.pagoRepository.find();
-    console.log(`💰 Total de pagos históricos encontrados: ${todosPagos.length}`);
-
     const pagosMes = todosPagos.filter(p => 
         p.mes && p.mes.toLowerCase().trim() === mesString.toLowerCase().trim()
     );
     
     const totalPagos = pagosMes.reduce((sum, p) => sum + Number(p.monto), 0);
-    console.log(`💰 Pagos encontrados para este mes: ${pagosMes.length} | Total Sumado: ${totalPagos}`);
-    
-    console.log("========= FIN REPORTE =========");
 
     return {
-      alumnosActivos: alumnosTotal,
+      alumnosActivos,
       personal,
       vehiculos,
       pagosMesTotal: totalPagos,

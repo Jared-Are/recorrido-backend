@@ -14,6 +14,7 @@ import { AvisosModule } from './avisos/avisos.module';
 import { ConfiguracionModule } from './configuracion/configuracion.module';
 import { DiasNoLectivosModule } from './dias-no-lectivos/dias-no-lectivos.module'; // <-- IMPORTACIÓN CORRECTA
 import { TutorModule } from './tutor/tutor.module';
+import { ReportesModule } from './reportes/reportes.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -45,7 +46,8 @@ import { TutorModule } from './tutor/tutor.module';
     AvisosModule,
     ConfiguracionModule,
     DiasNoLectivosModule, // <-- AÑADE EL MÓDULO AQUÍ
-    TutorModule
+    TutorModule,
+    ReportesModule
   ],
   controllers: [AppController],
   providers: [AppService],
