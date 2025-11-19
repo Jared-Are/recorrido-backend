@@ -48,7 +48,7 @@ export class SolicitudesService {
       tutorUser = this.userRepo.create({
         nombre: solicitud.padreNombre,
         telefono: solicitud.telefono, // Importante: pasar el teléfono
-        email: solicitud.email || null, // Email opcional
+        email: solicitud.email || undefined, // Email opcional
         contrasena: undefined, // ¡SIN CONTRASEÑA! Se creará vía invitación
         rol: UserRole.TUTOR,       // Usamos el Enum
         estatus: UserStatus.INVITADO // Estado inicial

@@ -2,7 +2,6 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColum
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 
-// Enums para evitar errores de texto
 export enum UserStatus {
   INVITADO = 'INVITADO',
   ACTIVO = 'ACTIVO',
@@ -19,16 +18,17 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: true }) // Email opcional
-  email: string  | null;
+  // CORRECCIÓN: Agregamos { type: 'text' } para que Postgres no se confunda
+  @Column({ type: 'text', unique: true, nullable: true }) 
+  email: string;
 
-  @Column({ unique: true }) // Teléfono obligatorio y único
+  @Column({ type: 'text', unique: true }) 
   telefono: string;
 
-  @Column({ select: false, nullable: true }) // Contraseña opcional al inicio
-  contrasena?: string;
+  @Column({ type: 'text', select: false, nullable: true }) 
+  contrasena: string;
   
-  @Column()
+  @Column({ type: 'text' })
   nombre: string;
 
   @Column({
@@ -45,8 +45,7 @@ export class User {
   })
   rol: UserRole;
 
-  // Token para invitar por WhatsApp
-  @Column({ nullable: true, select: false })
+  @Column({ type: 'text', nullable: true, select: false })
   invitationToken: string;
 
   // --- RELACIONES ---
@@ -55,7 +54,7 @@ export class User {
   @JoinColumn({ name: 'vehiculoId' })
   vehiculo: Vehiculo;
 
-  @Column({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   vehiculoId: string;
   
   @OneToMany(() => Vehiculo, (vehiculo) => vehiculo.chofer)
