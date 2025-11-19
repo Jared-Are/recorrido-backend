@@ -1,16 +1,17 @@
-import { Controller, Get, Post, Body, Param, Patch } from '@nestjs/common';
-import { UsersService } from './users.service'; // Asegúrate de tener tu servicio de usuarios
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { UsersService } from './users.service';
 
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // Listar usuarios para tu panel de Admin
+  // 1. OBTENER TODOS
   @Get()
   findAll() {
-    return this.usersService.findAll(); // Asumo que tienes este método
+    return this.usersService.findAll();
   }
-// 2. CREAR USUARIO (ESTE ES EL QUE FALTABA O FALLABA)
+
+  // 2. CREAR USUARIO
   @Post()
   create(@Body() body: any) {
     return this.usersService.create(body);
@@ -22,12 +23,16 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-
-  // --- ENDPOINT PARA EL BOTÓN DE WHATSAPP ---
+  // 4. GENERAR INVITACIÓN WHATSAPP
   @Post(':id/invitacion')
-  async generarInvitacion(@Param('id') id: string) {
-    const datos = await this.usersService.generarTokenInvitacion(id);
-    return datos; 
-    // El frontend recibirá { link, mensaje } y abrirá window.open(`https://wa.me/...`)
+  generarInvitacion(@Param('id') id: string) {
+    return this.usersService.generarTokenInvitacion(id);
+  }
+
+  // 5. ACTIVAR CUENTA (Este es el que te daba error)
+  @Post('activar')
+  activar(@Body() body: { token: string; password: string }) {
+    // Ahora TypeScript debería reconocer este método si guardaste el servicio
+    return this.usersService.activarCuenta(body.token, body.password);
   }
 }
