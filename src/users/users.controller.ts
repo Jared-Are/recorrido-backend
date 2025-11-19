@@ -17,13 +17,21 @@ export class UsersController {
     return this.usersService.create(body);
   }
 
+  // --- 🚨 BOTÓN DE PÁNICO (RESCATE) ---
+  // Visita esta URL en tu navegador (GET) para crear el admin de emergencia
+  // Ejemplo: https://tu-app.com/users/seed
+  @Get('seed')
+  crearAdminDeEmergencia() {
+    return this.usersService.createAdminSeed();
+  }
+
   // 3. BUSCAR UN USUARIO POR ID
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
-  // 4. GENERAR INVITACIÓN WHATSAPP (Devuelve link y mensaje con el username)
+  // 4. GENERAR INVITACIÓN WHATSAPP
   @Post(':id/invitacion')
   generarInvitacion(@Param('id') id: string) {
     return this.usersService.generarTokenInvitacion(id);
@@ -35,7 +43,7 @@ export class UsersController {
     return this.usersService.activarCuenta(body.token, body.password);
   }
 
-  // 6. INICIAR SESIÓN (Ahora por Username)
+  // 6. INICIAR SESIÓN (Por Username)
   @Post('login')
   login(@Body() body: { username: string; contrasena: string }) {
     return this.usersService.login(body.username, body.contrasena);
