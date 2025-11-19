@@ -9,11 +9,13 @@ import { Alumno } from '../alumnos/alumno.entity';
 import { Pago } from '../pagos/pago.entity';
 import { User } from '../users/user.entity';
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
+import { Personal } from '../personal/personal.entity'; // <--- 1. IMPORTAR ESTO
+
 
 @Module({
   imports: [
     // Registramos todas las entidades que necesitamos contar
-    TypeOrmModule.forFeature([ConfiguracionEscolar, Alumno, Pago, User, Vehiculo])
+    TypeOrmModule.forFeature([ConfiguracionEscolar, Alumno, Pago, User, Vehiculo, Personal])
   ],
   controllers: [ConfiguracionController],
   providers: [ConfiguracionService],
