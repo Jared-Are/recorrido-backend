@@ -29,10 +29,15 @@ export class UsersController {
     return this.usersService.generarTokenInvitacion(id);
   }
 
-  // 5. ACTIVAR CUENTA (Este es el que te daba error)
+  // 5. ACTIVAR CUENTA (Recibe token y password)
   @Post('activar')
   activar(@Body() body: { token: string; password: string }) {
-    // Ahora TypeScript debería reconocer este método si guardaste el servicio
     return this.usersService.activarCuenta(body.token, body.password);
+  }
+
+  // 6. INICIAR SESIÓN (Login real)
+  @Post('login')
+  login(@Body() body: { telefono: string; contrasena: string }) {
+    return this.usersService.login(body.telefono, body.contrasena);
   }
 }
