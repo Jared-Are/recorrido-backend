@@ -20,37 +20,31 @@ export class AlumnosService {
   async create(createAlumnoDto: CreateAlumnoDto): Promise<Alumno> {
     const { tutor: datosTutor, ...datosAlumno } = createAlumnoDto;
 
-    // 1. Limpieza de datos (Sanitización)
     const telefonoTutor = datosTutor.telefono?.trim() || undefined;
-    // Accedemos al email de forma segura. Casteamos a 'any' por seguridad si el DTO no se ha actualizado
     const emailTutor = (datosTutor as any).email?.trim() || undefined; 
 
     if (!telefonoTutor) {
        throw new BadRequestException("El teléfono del tutor es obligatorio");
     }
 
-    // 2. Buscar si el tutor ya existe (Por teléfono)
+    // 1. Buscar si el tutor ya existe (Por teléfono)
     let usuarioTutor = await this.usersRepository.findOne({ 
       where: { telefono: telefonoTutor } 
     });
 
-    // 3. Validación de Email:
-    // Si es un usuario NUEVO y nos dan un email, verificamos que ese email no pertenezca a OTRO usuario
-    if (!usuarioTutor && emailTutor) {
-        const existeEmail = await this.usersRepository.findOne({ where: { email: emailTutor } });
-        if (existeEmail) {
-            // Si esto pasa, el frontend recibe un error 400 específico
-            throw new BadRequestException(`El correo ${emailTutor} ya está registrado en el sistema con otro número de teléfono.`);
-        }
-    }
-
-    // 4. Si no existe el usuario, lo creamos
+    // 2. Si no existe, lo creamos AUTOMÁTICAMENTE
     if (!usuarioTutor) {
       try {
+        // Generamos un username base: "juan.perez" + números aleatorios
+        const baseName = datosTutor.nombre.trim().toLowerCase().replace(/\s+/g, '.');
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 4 dígitos
+        const usernameGen = `${baseName}${randomSuffix}`;
+
         usuarioTutor = this.usersRepository.create({
           nombre: datosTutor.nombre,
           telefono: telefonoTutor,
-          email: emailTutor, // Si es undefined, se guarda como null (correcto)
+          email: emailTutor, // Opcional
+          username: usernameGen, // <--- AQUÍ SE GUARDA EL USUARIO
           rol: UserRole.TUTOR,
           estatus: UserStatus.INVITADO,
           contrasena: undefined, 
@@ -58,15 +52,14 @@ export class AlumnosService {
         await this.usersRepository.save(usuarioTutor);
       } catch (error: any) {
         console.error("Error BD creando tutor:", error);
-        // Manejo específico de duplicados (por si acaso falló la validación previa)
         if (error.code === '23505') { 
-             throw new BadRequestException("Error: El teléfono o correo ingresado ya existe en otro usuario.");
+             throw new BadRequestException("Error: El teléfono ya existe en otro usuario.");
         }
         throw new BadRequestException("No se pudo registrar el tutor. Verifica los datos.");
       }
     }
 
-    // 5. Crear Alumno
+    // 3. Crear Alumno asociado
     const newAlumno = this.alumnosRepository.create({
       ...datosAlumno,
       tutor: datosTutor.nombre, 

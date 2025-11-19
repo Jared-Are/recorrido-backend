@@ -18,12 +18,15 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // CORRECCIÓN: Agregamos { type: 'text' } para que Postgres no se confunda
+  // NUEVO: Este será el login principal
   @Column({ type: 'text', unique: true, nullable: true }) 
-  email: string;
+  username: string;
 
   @Column({ type: 'text', unique: true, nullable: true }) 
   telefono: string;
+
+  @Column({ type: 'text', unique: true, nullable: true }) 
+  email: string;
 
   @Column({ type: 'text', select: false, nullable: true }) 
   contrasena: string;
