@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core'; // <--- Necesario para el guardia global
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule, ConfigService } from '@nestjs/config'; // <--- AQUÍ FALTABA ConfigService
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
-// Tus módulos
+// Tus módulos de funcionalidad
 import { AlumnosModule } from './alumnos/alumnos.module';
 import { AsistenciaModule } from './asistencias/asistencia.module';
-//import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PagosModule } from './pagos/pagos.module';
 import { GastosModule } from './gastos/gastos.module';
@@ -19,16 +19,17 @@ import { DiasNoLectivosModule } from './dias-no-lectivos/dias-no-lectivos.module
 import { TutorModule } from './tutor/tutor.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { SolicitudesModule } from './solicitudes/solicitudes.module';
+
+// Módulo de Supabase y Guardia de Seguridad
 import { SupabaseModule } from './supabase/supabase.module';
+import { AuthGuard } from './supabase/auth.guard'; 
 
 @Module({
   imports: [
-    // 1. Configuración Global (Carga el .env)
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+    // 1. Configuración Global (.env)
+    ConfigModule.forRoot({ isGlobal: true }),
 
-    // 2. Base de Datos ASÍNCRONA (Espera a leer el config)
+    // 2. Base de Datos (Conexión segura a Supabase)
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -41,16 +42,14 @@ import { SupabaseModule } from './supabase/supabase.module';
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
         synchronize: true,
-        ssl: {
-          rejectUnauthorized: false, // Necesario para Supabase/Render
-        },
+        ssl: { rejectUnauthorized: false }, // Requerido por Render/Supabase
       }),
-    }), // <--- ¡ESTO CIERRA LA CONFIGURACIÓN DE LA BD!
+    }),
 
-    // 3. Tus módulos (van separados por coma)
+    // 3. Módulos de la Aplicación
+    SupabaseModule,
     AlumnosModule,
     AsistenciaModule,
-   // AuthModule,
     UsersModule,
     PagosModule,
     GastosModule,
@@ -62,9 +61,16 @@ import { SupabaseModule } from './supabase/supabase.module';
     TutorModule,
     ReportesModule,
     SolicitudesModule,
-    SupabaseModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // 4. ACTIVAR SEGURIDAD EN TODA LA APP
+    // Esto hace que todos los endpoints requieran token, excepto los marcados con @Public()
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+  ],
 })
 export class AppModule {}

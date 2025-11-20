@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from './user.entity';
+import { Public } from '../common/public.decorator'; // <--- IMPORTANTE: El decorador que creamos
 
 @Controller('users')
 export class UsersController {
@@ -19,6 +20,7 @@ export class UsersController {
   }
 
   // 3. CREAR USUARIO (Llama a Supabase y luego guarda local)
+  // Este requiere token (solo admin/propietario debería poder crear)
   @Post()
   create(@Body() datos: Partial<User>) {
     return this.usersService.create(datos);
@@ -30,8 +32,9 @@ export class UsersController {
     return this.usersService.generarTokenInvitacion(id);
   }
 
-  // 5. BUSCAR EMAIL POR USUARIO (Para el Login del Frontend)
-  // Recibe { identifier: "juan.perez" } y devuelve { email: "..." }
+  // 5. BUSCAR EMAIL POR USUARIO (LOGIN HÍBRIDO)
+  // Este DEBE ser público para que el usuario pueda preguntar su email antes de tener token.
+  @Public()
   @Post('lookup')
   async lookupEmail(@Body() body: { identifier: string }) {
     return this.usersService.findEmailByIdentifier(body.identifier);
