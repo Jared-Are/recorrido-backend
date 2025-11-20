@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { Vehiculo } from '../vehiculos/vehiculo.entity'; 
-import { Gasto } from '../gastos/gasto.entity'; // <-- 1. IMPORTAR GASTO
+import { Gasto } from '../gastos/gasto.entity'; 
 
 @Entity('personal')
 export class Personal {
@@ -25,7 +25,12 @@ export class Personal {
   @Column('varchar', { default: 'activo' })
   estado: string; 
 
-  // --- CAMPO MODIFICADO (para conectar con Vehiculo) ---
+  // --- ¡ESTA ES LA COLUMNA CLAVE QUE FALTABA! ---
+  // Permite saber qué usuario del Login (Supabase) corresponde a este empleado
+  @Column('uuid', { nullable: true }) 
+  userId: string;
+
+  // --- Relación con Vehículo ---
   @Column('uuid', { nullable: true }) 
   vehiculoId: string;
   
@@ -37,7 +42,7 @@ export class Personal {
   @JoinColumn({ name: 'vehiculoId' })
   vehiculo: Vehiculo;
 
-  // --- RELACIÓN AÑADIDA (para conectar con Gasto) ---
+  // --- Relación con Gastos ---
   @OneToMany(() => Gasto, (gasto) => gasto.personal)
   gastos: Gasto[];
 
