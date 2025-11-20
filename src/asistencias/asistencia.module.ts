@@ -17,6 +17,7 @@ import { VehiculosModule } from '../vehiculos/vehiculos.module';
 import { AvisosModule } from '../avisos/avisos.module';
 import { ConfiguracionModule } from '../configuracion/configuracion.module';
 import { DiasNoLectivosModule } from '../dias-no-lectivos/dias-no-lectivos.module';
+import { Personal } from '../personal/personal.entity'; // <--- ¡ESTO FALTABA!
 
 
 @Module({
@@ -25,6 +26,7 @@ import { DiasNoLectivosModule } from '../dias-no-lectivos/dias-no-lectivos.modul
     TypeOrmModule.forFeature([Asistencia, 
       Alumno, 
       User, 
+      Personal,
       Vehiculo, 
       Aviso]),
 
