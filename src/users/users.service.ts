@@ -20,41 +20,36 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- NUEVO: BUSCAR EMAIL PARA LOGIN ---
-  // Esto permite que el usuario entre con Username o Teléfono
+  // --- MEJORADO: BUSCAR EMAIL Y ROL PARA LOGIN ---
   async findEmailByIdentifier(identifier: string) {
-    // 1. Si lo que escribió ya parece un email, lo devolvemos tal cual
-    if (identifier.includes('@')) return { email: identifier };
-
-    // 2. Si no, buscamos en nuestra BD si coincide con username o teléfono
+    // Buscamos en la BD local por username, teléfono O email
     const user = await this.usersRepository.findOne({
       where: [
         { username: identifier },
-        { telefono: identifier }
+        { telefono: identifier },
+        { email: identifier } // También buscamos por email si el usuario lo escribió
       ],
-      select: ['email'] // Solo nos interesa recuperar el email para Supabase
+      select: ['email', 'rol'] // <--- IMPORTANTE: Recuperamos el ROL también
     });
 
-    if (!user) throw new NotFoundException('Usuario no encontrado.');
+    if (!user) throw new NotFoundException('Usuario no encontrado en el sistema.');
 
-    return { email: user.email };
+    // Devolvemos el email (para Supabase) y el rol (para redirigir)
+    return { email: user.email, rol: user.rol };
   }
 
   // --- CREAR USUARIO (Integrado con Supabase) ---
   async create(datos: Partial<User>) {
     try {
-      // 1. Validaciones Locales
       const telefonoLimpio = datos.telefono && datos.telefono.trim() !== '' ? datos.telefono : undefined;
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
       if (existe) throw new BadRequestException(`Ya existe un usuario local con el teléfono ${telefonoLimpio}`);
 
-      // 2. Preparar datos para Supabase
       const emailParaSupabase = datos.email || `${telefonoLimpio}@sin-email.com`;
       const passwordTemporal = `Temp${Math.floor(100000 + Math.random() * 900000)}`; 
 
-      // 3. Crear en Supabase Auth
       const { data: authUser, error: authError } = await this.supabaseService.admin.createUser({
         email: emailParaSupabase,
         password: passwordTemporal,
@@ -71,7 +66,6 @@ export class UsersService {
         throw new BadRequestException(`Error al crear en Supabase: ${authError.message}`);
       }
 
-      // 4. Crear en Base de Datos Local
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.');
