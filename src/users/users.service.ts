@@ -1,13 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserStatus, UserRole } from './user.entity';
+import { SupabaseService } from '../supabase/supabase.service'; 
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private supabaseService: SupabaseService, 
   ) {}
 
   findAll() {
@@ -18,15 +20,44 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- 3. CREAR USUARIO (Normal) ---
+  // --- CREAR USUARIO (Integrado con Supabase) ---
   async create(datos: Partial<User>) {
     try {
+      // 1. Validaciones Locales
       const telefonoLimpio = datos.telefono && datos.telefono.trim() !== '' ? datos.telefono : undefined;
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
+      // Validamos si ya existe en NUESTRA base de datos para no duplicar
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
-      if (existe) throw new BadRequestException(`Ya existe un usuario con el teléfono ${telefonoLimpio}`);
+      if (existe) throw new BadRequestException(`Ya existe un usuario local con el teléfono ${telefonoLimpio}`);
 
+      // 2. Preparar datos para Supabase (El Truco del Email)
+      // Supabase EXIGE un email. Si no tenemos, inventamos uno usando el teléfono.
+      const emailParaSupabase = datos.email || `${telefonoLimpio}@sin-email.com`;
+      
+      // Generamos una contraseña temporal aleatoria (el usuario la cambiará con el link)
+      const passwordTemporal = `Temp${Math.floor(100000 + Math.random() * 900000)}`; 
+
+      // 3. Crear en Supabase Auth (La Nube)
+      const { data: authUser, error: authError } = await this.supabaseService.admin.createUser({
+        email: emailParaSupabase,
+        password: passwordTemporal,
+        email_confirm: true, // Lo confirmamos automáticamente para que pueda entrar
+        user_metadata: {
+          nombre: datos.nombre,
+          telefono: telefonoLimpio,
+          rol: datos.rol || UserRole.TUTOR
+        }
+      });
+
+      if (authError) {
+        console.error("Error Supabase:", authError);
+        // Si el error es que ya existe, intentamos recuperarlo para no bloquear el proceso
+        throw new BadRequestException(`Error al crear en Supabase: ${authError.message}`);
+      }
+
+      // 4. Crear en Base de Datos Local
+      // Generamos un username visual bonito (ej. juan.perez123)
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.');
@@ -36,15 +67,17 @@ export class UsersService {
 
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
+        id: authUser.user.id, // <--- CRUCIAL: Usamos el MISMO ID que nos dio Supabase
         username: usernameFinal,
         telefono: telefonoLimpio,
-        email: datos.email || undefined,
+        email: emailParaSupabase, 
         rol: datos.rol || UserRole.TUTOR,
         estatus: UserStatus.INVITADO,
-        contrasena: undefined,
+        contrasena: undefined, // Ya no guardamos contraseñas aquí
       });
 
       return await this.usersRepository.save(nuevoUsuario);
+
     } catch (error) {
       console.error("Error creando usuario:", error);
       if (error instanceof BadRequestException) throw error;
@@ -52,73 +85,33 @@ export class UsersService {
     }
   }
 
-  // --- 4. GENERAR INVITACIÓN ---
+  // --- GENERAR INVITACIÓN (Link Mágico) ---
   async generarTokenInvitacion(id: string) {
+    // 1. Buscar usuario local
     const user = await this.usersRepository.findOneBy({ id });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (!user) throw new NotFoundException('Usuario no encontrado en BD local');
 
-    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    user.invitationToken = token;
-    
-    if (!user.username) {
-       const base = user.nombre.trim().toLowerCase().replace(/\s+/g, '.');
-       user.username = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
-    }
-
-    await this.usersRepository.save(user);
-
-    const dominioFrontend = process.env.FRONTEND_URL || 'http://localhost:3000'; 
-    const linkActivacion = `${dominioFrontend}/activar?token=${token}`;
-    const mensaje = `Hola ${user.nombre}, bienvenido al Recorrido Escolar.\n\n👤 Tu Usuario: *${user.username}*\n🔐 Activa tu cuenta: ${linkActivacion}`;
-
-    return { link: linkActivacion, telefono: user.telefono, mensaje: mensaje };
-  }
-
-  // --- 5. ACTIVAR CUENTA ---
-  async activarCuenta(token: string, contrasena: string) {
-    const user = await this.usersRepository.findOneBy({ invitationToken: token });
-    if (!user) throw new NotFoundException("Token inválido o expirado.");
-
-    user.contrasena = contrasena;
-    user.estatus = UserStatus.ACTIVO;
-    user.invitationToken = null as any; 
-
-    return await this.usersRepository.save(user);
-  }
-
-  // --- 6. LOGIN ---
-  async login(username: string, contrasena: string) {
-    console.log(`🔍 Login -> User: "${username}"`);
-    const user = await this.usersRepository.createQueryBuilder("user")
-      .where("user.username = :username", { username })
-      .addSelect("user.contrasena")
-      .getOne();
-
-    if (!user) throw new UnauthorizedException("Usuario no encontrado.");
-    if (!user.contrasena || user.contrasena !== contrasena) throw new UnauthorizedException("Contraseña incorrecta.");
-    if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Tu cuenta no está activa.");
-
-    const { contrasena: pass, invitationToken, ...result } = user;
-    return result;
-  }
-
-  // --- 🚀 RESCATE: CREAR ADMIN DE EMERGENCIA ---
-  async createAdminSeed() {
-    // 1. Revisar si ya existe para no duplicar
-    const existe = await this.usersRepository.findOneBy({ username: 'admin' });
-    if (existe) return { message: "El usuario 'admin' ya existe. Intenta loguearte con pass: 123456" };
-
-    // 2. Crear al Super Admin
-    const admin = this.usersRepository.create({
-        nombre: "Super Admin",
-        username: "admin",          // TU USUARIO
-        contrasena: "123456",       // TU CONTRASEÑA
-        telefono: "00000000",       // Dummy
-        rol: UserRole.PROPIETARIO,  // Rol máximo
-        estatus: UserStatus.ACTIVO  // ¡Activo de una vez!
+    // 2. Pedir Link Mágico a Supabase
+    // Usamos 'recovery' para que el usuario pueda poner su contraseña nueva al entrar
+    const { data, error } = await this.supabaseService.admin.generateLink({
+      type: 'recovery',
+      email: user.email,
     });
 
-    await this.usersRepository.save(admin);
-    return { message: "✅ Usuario Creado: admin / 123456" };
+    if (error || !data.properties?.action_link) {
+      console.error(error);
+      throw new BadRequestException('No se pudo generar el link de Supabase');
+    }
+    
+    const linkMagico = data.properties.action_link;
+
+    // 3. Mensaje para WhatsApp
+    const mensaje = `Hola ${user.nombre}, bienvenido al Recorrido Escolar.\n\n👤 Usuario: *${user.username}*\n🔗 Toca este enlace para crear tu contraseña y entrar:\n${linkMagico}`;
+
+    return { 
+      link: linkMagico, 
+      telefono: user.telefono, 
+      mensaje: mensaje 
+    };
   }
 }
