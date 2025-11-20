@@ -72,7 +72,7 @@ export class UsersService {
         telefono: telefonoLimpio,
         email: emailParaSupabase, 
         rol: datos.rol || UserRole.TUTOR,
-        estatus: UserStatus.INVITADO,
+        estatus: UserStatus.ACTIVO,
         contrasena: undefined, // Ya no guardamos contraseñas aquí
       });
 
