@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config'; // <--- IMPORTAR ESTO
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AlumnosModule } from './alumnos/alumnos.module';
@@ -19,18 +20,16 @@ import { SolicitudesModule } from './solicitudes/solicitudes.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
-      // --- INICIO DE LA NUEVA CONFIGURACIÓN ---
-      type: 'postgres', // 1. Cambiamos a 'postgres'
-      
-      // 2. Leemos la URL de las variables de entorno
-      url: process.env.DATABASE_URL, 
-      
+    type: 'postgres',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '5432'),
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true, // Esto creará las tablas en Supabase
-      
-      // 3. Requerido para conexiones en la nube
-      ssl: {
-        rejectUnauthorized: false,
+      synchronize: true, // Esto creará las tablas automáticamente en Supabase
+      ssl: { 
+        rejectUnauthorized: false // <--- IMPORTANTE: Supabase exige SSL
       },
       // --- FIN DE LA NUEVA CONFIGURACIÓN ---
     }),
