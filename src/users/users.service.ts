@@ -91,11 +91,22 @@ export class UsersService {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('Usuario no encontrado en BD local');
 
+    // DETECTAMOS EL ENTORNO (Local o Producción)
+    // Si tienes una variable FRONTEND_URL en tu .env úsala, si no, usa localhost por defecto
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+
     // 2. Pedir Link Mágico a Supabase
     // Usamos 'recovery' para que el usuario pueda poner su contraseña nueva al entrar
     const { data, error } = await this.supabaseService.admin.generateLink({
       type: 'recovery',
       email: user.email,
+      options: {
+        // REDIRECCIÓN EXPLÍCITA:
+        // Esto fuerza a Supabase a mandar al usuario a esta página específica
+        // con el token en la URL.
+        redirectTo: `${frontendUrl}/actualizar-password`
+      }
     });
 
     if (error || !data.properties?.action_link) {
