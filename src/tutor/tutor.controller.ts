@@ -1,29 +1,37 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { TutorService } from './tutor.service';
-import { AuthGuard } from '@nestjs/passport';
+// El AuthGuard ya está configurado globalmente en app.module.ts
 
 @Controller('tutor')
-// @UseGuards(AuthGuard('jwt')) // <-- Descomenta cuando tengas login en el front
+// NOTA: ELIMINAMOS @UseGuards(AuthGuard('jwt')) porque el guardia es global
+
 export class TutorController {
-  constructor(private readonly tutorService: TutorService) {}
+  constructor(private readonly tutorService: TutorService) {}
 
-  // ID TEMPORAL DE PRUEBA (Copia el ID de un usuario con rol 'tutor' de tu BD)
-  private readonly TEST_TUTOR_ID = '3805067b-d808-4e12-af35-7790db80a307'; 
+  // 1. Resumen
+  @Get('resumen')
+  getResumen(@Req() req: any) { // <-- Descomentamos @Req()
+    const userId = req.user.id; // <-- Usamos el ID del usuario autenticado (del token)
+    // return this.tutorService.getResumen(this.TEST_TUTOR_ID); // Eliminamos la línea de prueba
+    return this.tutorService.getResumen(userId); // <-- ¡LA CLAVE!
+  }
 
-  @Get('resumen')
-  getResumen(/* @Req() req */) {
-    // const userId = req.user.id;
-    return this.tutorService.getResumen(this.TEST_TUTOR_ID);
-  }
+  // 2. Historial de asistencias
+  @Get('asistencias')
+  getAsistencias(@Req() req: any) {
+    return this.tutorService.getAsistencias(req.user.id);
+  }
 
-  @Get('asistencias')
-  getAsistencias(/* @Req() req */) {
-    return this.tutorService.getAsistencias(this.TEST_TUTOR_ID);
-  }
-
-  // --- ¿TIENES ESTA PARTE? ---
-  @Get('pagos') // <--- ¡ESTO ES LO QUE FALTA!
-  getPagos() {
-    return this.tutorService.getPagos(this.TEST_TUTOR_ID);
+  // 3. Historial de Pagos
+  @Get('pagos') 
+  getPagos(@Req() req: any) {
+    return this.tutorService.getPagos(req.user.id);
+  }
+  
+  // 4. Avisos (Si tienes un endpoint de avisos en el controlador de tutor)
+  @Get('avisos') 
+  getAvisos(@Req() req: any) {
+    // Nota: Esto asume que tienes un getAvisos en TutorService
+    return this.tutorService.getAvisos(req.user.id);
   }
 }
