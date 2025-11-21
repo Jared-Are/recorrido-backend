@@ -27,24 +27,31 @@ export class AlumnosService {
        throw new BadRequestException("El teléfono del tutor es obligatorio");
     }
 
-    // 1. Buscar si el tutor ya existe (Por teléfono)
+    // 1. Buscar si el tutor ya existe
     let usuarioTutor = await this.usersRepository.findOne({ 
       where: { telefono: telefonoTutor } 
     });
 
-    // 2. Si no existe, lo creamos AUTOMÁTICAMENTE
+    // 2. Validación de Email (si aplica)
+    if (!usuarioTutor && emailTutor) {
+        const existeEmail = await this.usersRepository.findOne({ where: { email: emailTutor } });
+        if (existeEmail) {
+            throw new BadRequestException(`El correo ${emailTutor} ya está registrado.`);
+        }
+    }
+
+    // 3. Crear usuario si no existe
     if (!usuarioTutor) {
       try {
-        // Generamos un username base: "juan.perez" + números aleatorios
         const baseName = datosTutor.nombre.trim().toLowerCase().replace(/\s+/g, '.');
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 4 dígitos
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
         const usernameGen = `${baseName}${randomSuffix}`;
 
         usuarioTutor = this.usersRepository.create({
           nombre: datosTutor.nombre,
           telefono: telefonoTutor,
-          email: emailTutor, // Opcional
-          username: usernameGen, // <--- AQUÍ SE GUARDA EL USUARIO
+          email: emailTutor,
+          username: usernameGen,
           rol: UserRole.TUTOR,
           estatus: UserStatus.INVITADO,
           contrasena: undefined, 
@@ -55,26 +62,29 @@ export class AlumnosService {
         if (error.code === '23505') { 
              throw new BadRequestException("Error: El teléfono ya existe en otro usuario.");
         }
-        throw new BadRequestException("No se pudo registrar el tutor. Verifica los datos.");
+        throw new BadRequestException("No se pudo registrar el tutor.");
       }
     }
 
-    // 3. Crear Alumno asociado
+    // 4. Crear Alumno
     const newAlumno = this.alumnosRepository.create({
       ...datosAlumno,
       tutor: datosTutor.nombre, 
-      tutorUser: usuarioTutor,  
+      tutorUser: usuarioTutor,
+      // CORRECCIÓN CLAVE: Guardamos el teléfono también en la columna 'contacto' del alumno
+      contacto: telefonoTutor, 
       activo: true,
     });
 
     return this.alumnosRepository.save(newAlumno);
   }
 
-  // --- OTROS MÉTODOS ---
+  // --- LEER TODOS ---
   findAll(): Promise<Alumno[]> {
     return this.alumnosRepository.find({
       where: { activo: true },
       order: { nombre: 'ASC' },
+      // Importante: Traemos 'tutorUser' para leer los datos frescos del usuario
       relations: ['vehiculo', 'tutorUser'], 
     });
   }
@@ -92,9 +102,7 @@ export class AlumnosService {
         where: { id },
         relations: ['vehiculo', 'tutorUser']
     });
-    if (!alumno) {
-      throw new NotFoundException(`Alumno con id ${id} no encontrado`);
-    }
+    if (!alumno) throw new NotFoundException(`Alumno con id ${id} no encontrado`);
     return alumno;
   }
 
@@ -108,6 +116,8 @@ export class AlumnosService {
 
     if (tutor) {
         alumno.tutor = tutor.nombre;
+        // Opcional: Actualizar también 'contacto' si cambió el tutor
+        if (tutor.telefono) alumno.contacto = tutor.telefono;
     }
     return this.alumnosRepository.save(alumno);
   }
