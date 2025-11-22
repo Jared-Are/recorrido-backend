@@ -103,7 +103,6 @@ export class UsersService {
     if (!user) throw new NotFoundException("Link inválido.");
 
     try {
-        // Importante: Al activar, sincronizamos la contraseña en Supabase
         await this.supabaseService.admin.updateUserById(user.id, { password: contrasena });
     } catch(e) { console.log("Sync pass failed"); }
 
@@ -113,7 +112,7 @@ export class UsersService {
     return await this.usersRepository.save(user);
   }
 
-  // --- 4. LOGIN ---
+  // --- 4. LOGIN (¡AQUÍ ESTABA EL ERROR!) ---
   async login(username: string, contrasena: string) {
     const user = await this.usersRepository.createQueryBuilder("user")
       .where("user.username = :username", { username })
@@ -130,26 +129,27 @@ export class UsersService {
     });
 
     if (error) {
-        // Si falla en Supabase, podría ser por desincronización. 
-        // Opcional: Si la contraseña local coincide, forzamos login devolviendo token manual o relanzamos error.
         console.error("Error Supabase Login:", error.message);
         throw new UnauthorizedException("Contraseña incorrecta.");
     }
 
-    return { ...user, access_token: data.session.access_token };
+    const { contrasena: pass, invitationToken, ...result } = user;
+
+    // CORRECCIÓN: DEVOLVEMOS EL TOKEN AL FRONTEND
+    return { 
+        ...result, 
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token 
+    };
   }
 
-  // --- 🚨 RESCATE TOTAL (Sincronización de IDs) ---
+  // --- 🚨 RESCATE ---
   async createAdminSeed() {
     const emailAdmin = "admin@recorrido.app";
     const passAdmin = "123456";
     let supabaseId: string | null = null;
 
-    // 1. Buscar o Crear en Supabase para obtener el ID REAL
     try {
-        // Intentamos listar usuarios (solo si tenemos service_role key)
-        // O simplemente intentamos crear y si falla porque existe, no pasa nada, pero necesitamos el ID.
-        // La forma más fácil sin listar es crear.
         const { data, error } = await this.supabaseService.admin.createUser({
             email: emailAdmin,
             password: passAdmin,
@@ -159,50 +159,34 @@ export class UsersService {
 
         if (data.user) {
             supabaseId = data.user.id;
-            console.log("✅ Admin creado en Supabase. ID:", supabaseId);
         } else if (error) {
-            console.log("ℹ️ Admin ya existe en Supabase. Intentando recuperar ID...");
-            // Si ya existe, no podemos obtener el ID fácilmente sin hacer login o list users.
-            // Hacemos un login temporal para sacar el ID.
              const { data: loginData } = await this.supabaseService.client.auth.signInWithPassword({
                 email: emailAdmin,
                 password: passAdmin
             });
             if (loginData.user) supabaseId = loginData.user.id;
         }
-    } catch (e) {
-        console.error("Error conectando con Supabase:", e);
-    }
+    } catch (e) { console.error(e); }
 
-    if (!supabaseId) {
-        return { message: "❌ Error crítico: No se pudo obtener el ID de Supabase. Verifica credenciales." };
-    }
+    if (!supabaseId) return { message: "❌ Error crítico: Falló Supabase." };
 
-    // 2. Buscar admin local
     let adminLocal = await this.usersRepository.findOneBy({ username: 'admin' });
     
     if (adminLocal) {
-        // SI EL ID NO COINCIDE, LO ARREGLAMOS
         if (adminLocal.id !== supabaseId) {
-            console.log(`⚠️ Detectado ID desincronizado. Local: ${adminLocal.id} vs Supabase: ${supabaseId}`);
-            
-            // Borramos el local viejo (para evitar conflicto de PK)
             await this.usersRepository.delete(adminLocal.id);
-            
-            // Lo recreamos con el ID correcto
             const nuevoAdmin = this.usersRepository.create({
                 ...adminLocal,
-                id: supabaseId, // <--- LA CLAVE DEL ÉXITO
+                id: supabaseId,
                 email: emailAdmin,
-                contrasena: undefined // Limpiamos pass local
+                contrasena: undefined
             });
             await this.usersRepository.save(nuevoAdmin);
-            return { message: "✅ Admin SINCRONIZADO. IDs corregidos." };
+            return { message: "✅ Admin SINCRONIZADO." };
         }
     } else {
-        // Si no existe local, lo creamos con el ID de Supabase
         const nuevoAdmin = this.usersRepository.create({
-            id: supabaseId, // <--- LA CLAVE DEL ÉXITO
+            id: supabaseId,
             nombre: "Super Admin",
             username: "admin",
             telefono: "00000000",
