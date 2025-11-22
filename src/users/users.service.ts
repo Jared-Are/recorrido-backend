@@ -20,36 +20,35 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- MEJORADO: BUSCAR EMAIL Y ROL PARA LOGIN ---
+  // --- BUSCAR EMAIL Y ROL PARA LOGIN ---
   async findEmailByIdentifier(identifier: string) {
-    // Buscamos en la BD local por username, teléfono O email
     const user = await this.usersRepository.findOne({
       where: [
         { username: identifier },
         { telefono: identifier },
-        { email: identifier } // También buscamos por email si el usuario lo escribió
+        { email: identifier }
       ],
-      select: ['email', 'rol'] // <--- IMPORTANTE: Recuperamos el ROL también
+      select: ['email', 'rol'] 
     });
 
     if (!user) throw new NotFoundException('Usuario no encontrado en el sistema.');
-
-    // Devolvemos el email (para Supabase) y el rol (para redirigir)
     return { email: user.email, rol: user.rol };
   }
 
-  // --- CREAR USUARIO (Integrado con Supabase) ---
+  // --- CREAR USUARIO ---
   async create(datos: Partial<User>) {
     try {
       const telefonoLimpio = datos.telefono && datos.telefono.trim() !== '' ? datos.telefono : undefined;
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
+      // 1. Verificar duplicado local
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
       if (existe) throw new BadRequestException(`Ya existe un usuario local con el teléfono ${telefonoLimpio}`);
 
       const emailParaSupabase = datos.email || `${telefonoLimpio}@sin-email.com`;
       const passwordTemporal = `Temp${Math.floor(100000 + Math.random() * 900000)}`; 
 
+      // 2. Crear en Supabase
       const { data: authUser, error: authError } = await this.supabaseService.admin.createUser({
         email: emailParaSupabase,
         password: passwordTemporal,
@@ -66,6 +65,7 @@ export class UsersService {
         throw new BadRequestException(`Error al crear en Supabase: ${authError.message}`);
       }
 
+      // 3. Generar username
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.');
@@ -73,14 +73,15 @@ export class UsersService {
         usernameFinal = `${base}${random}`;
       }
 
+      // 4. Guardar en Local usando el ID de Supabase
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
-        id: authUser.user.id,
+        id: authUser.user.id, // ¡IMPORTANTE! Sincronizamos IDs
         username: usernameFinal,
         telefono: telefonoLimpio,
         email: emailParaSupabase, 
         rol: datos.rol || UserRole.TUTOR,
-        estatus: UserStatus.ACTIVO, // Nacen activos
+        estatus: UserStatus.ACTIVO, 
         contrasena: undefined,
       });
 
@@ -93,23 +94,50 @@ export class UsersService {
     }
   }
 
-  // --- GENERAR INVITACIÓN ---
+  // --- GENERAR INVITACIÓN (CON AUTO-REPARACIÓN) ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('Usuario no encontrado en BD local');
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    const { data, error } = await this.supabaseService.admin.generateLink({
+    // INTENTO 1: Generar Link
+    let { data, error } = await this.supabaseService.admin.generateLink({
       type: 'recovery',
       email: user.email,
-      options: {
-        redirectTo: `${frontendUrl}/actualizar-password`
-      }
+      options: { redirectTo: `${frontendUrl}/actualizar-password` }
     });
 
+    // AUTO-REPARACIÓN: Si el usuario no existe en Supabase (data vieja), lo creamos
+    if (error && error.message.includes('User not found')) {
+        console.log(`⚠️ Usuario ${user.email} no encontrado en Supabase. Reparando...`);
+        
+        // Lo creamos silenciosamente en Supabase
+        const { error: createError } = await this.supabaseService.admin.createUser({
+            email: user.email,
+            password: `Temp${Math.random().toString().slice(-8)}`, // Pass temporal cualquiera
+            email_confirm: true,
+            user_metadata: { nombre: user.nombre, telefono: user.telefono }
+        });
+
+        if (createError) {
+            console.error("❌ Falló la reparación:", createError);
+            throw new BadRequestException(`Error de sincronización: ${createError.message}`);
+        }
+
+        // INTENTO 2: Generar Link de nuevo
+        const retry = await this.supabaseService.admin.generateLink({
+            type: 'recovery',
+            email: user.email,
+            options: { redirectTo: `${frontendUrl}/actualizar-password` }
+        });
+        data = retry.data;
+        error = retry.error;
+    }
+
     if (error || !data.properties?.action_link) {
-      throw new BadRequestException('No se pudo generar el link de Supabase');
+      console.error("❌ Error final Supabase:", error);
+      throw new BadRequestException(`No se pudo generar el link: ${error?.message || 'Error desconocido'}`);
     }
     
     const linkMagico = data.properties.action_link;
