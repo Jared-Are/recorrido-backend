@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, HttpCode, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { PersonalService } from './personal.service';
 import { CreatePersonalDto } from './dto/create-personal.dto';
 import { UpdatePersonalDto } from './dto/update-personal.dto';
@@ -13,29 +13,25 @@ export class PersonalController {
   }
 
   @Get()
-  findAll(@Query('estado') estado: string) {
-    if (estado === 'activo' || estado === 'inactivo') {
+  findAll(@Query('estado') estado?: string) {
+    if (estado) {
       return this.personalService.findAllByEstado(estado);
     }
     return this.personalService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id') id: string) {
     return this.personalService.findOne(id);
   }
 
   @Patch(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string, 
-    @Body() updatePersonalDto: UpdatePersonalDto
-  ) {
+  update(@Param('id') id: string, @Body() updatePersonalDto: UpdatePersonalDto) {
     return this.personalService.update(id, updatePersonalDto);
   }
 
   @Delete(':id')
-  @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
+  remove(@Param('id') id: string) {
     return this.personalService.remove(id);
   }
 }
