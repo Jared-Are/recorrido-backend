@@ -11,7 +11,7 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // 1. Ruta Pública
+    // 1. Si la ruta es pública, pase adelante
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -19,32 +19,28 @@ export class AuthGuard implements CanActivate {
     
     if (isPublic) return true;
 
-    // 2. Extracción de Token
+    // 2. Buscar el token en la cabecera
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
     
     if (!token) {
-      console.warn(`🔒 AuthGuard: Bloqueo por falta de token en ${request.url}`);
+      console.warn(`🔒 Bloqueo: Falta token en ${request.method} ${request.url}`);
       throw new UnauthorizedException('No se encontró token de autenticación');
     }
 
     try {
-      // 3. Validación con Supabase
+      // 3. Validar con Supabase
       const { data: { user }, error } = await this.supabase.client.auth.getUser(token);
       
       if (error || !user) {
-        console.error('❌ AuthGuard: Token inválido:', error?.message);
         throw new UnauthorizedException('Token inválido o expirado');
       }
 
-      // Log de éxito (para confirmar que PASÓ el guardia)
-      console.log(`✅ AuthGuard: Acceso permitido a ${user.email} -> ${request.method} ${request.url}`);
-      
+      // 4. ¡Éxito! Adjuntamos el usuario al request
       request.user = user; 
       return true;
     } catch (err) {
-      console.error('🔥 AuthGuard: Error inesperado validando sesión', err);
-      throw new UnauthorizedException('Error validando sesión');
+      throw new UnauthorizedException('Sesión no válida');
     }
   }
 
