@@ -4,10 +4,11 @@ import { PersonalService } from './personal.service';
 import { PersonalController } from './personal.controller';
 import { Personal } from './personal.entity';
 import { VehiculosModule } from '../vehiculos/vehiculos.module';
+import { User } from 'src/users/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Personal]),
+    TypeOrmModule.forFeature([Personal, User]),
     VehiculosModule 
   ], 
   controllers: [PersonalController],

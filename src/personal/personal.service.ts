@@ -1,39 +1,34 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
 import { Personal } from './personal.entity';
 import { CreatePersonalDto } from './dto/create-personal.dto';
 import { UpdatePersonalDto } from './dto/update-personal.dto';
+import { User, UserRole, UserStatus } from '../users/user.entity';
 
 @Injectable()
 export class PersonalService {
   constructor(
     @InjectRepository(Personal)
-    private personalRepository: Repository<Personal>,
+    private personalRepository: Repository<Personal>, // Nombre oficial
+    
+    @InjectRepository(User) 
+    private userRepository: Repository<User>,         // Nombre oficial
   ) {}
-
-  // --- CREAR ---
-  create(createPersonalDto: CreatePersonalDto): Promise<Personal> {
-    const newPersonal = this.personalRepository.create({
-      ...createPersonalDto,
-      estado: 'activo', // El personal nuevo siempre inicia como 'activo'
-    });
-    return this.personalRepository.save(newPersonal);
-  }
 
   // --- LEER TODOS (Excepto 'eliminados') ---
   findAll(): Promise<Personal[]> {
     return this.personalRepository.find({
       where: {
-        estado: Not('eliminado') // Excluye los eliminados
+        estado: Not('eliminado') 
       },
       order: {
-        nombre: 'ASC' // Ordenar por nombre
+        nombre: 'ASC' 
       }
     });
   }
 
-  // --- LEER TODOS POR ESTADO (activo/inactivo) ---
+  // --- LEER TODOS POR ESTADO ---
   findAllByEstado(estado: string): Promise<Personal[]> {
      return this.personalRepository.find({
       where: {
@@ -54,7 +49,46 @@ export class PersonalService {
     return personal;
   }
 
-  // --- ACTUALIZAR (o cambiar estado) ---
+  // --- CREAR PERSONAL Y USUARIO (Lógica Unificada) ---
+  async create(createPersonalDto: CreatePersonalDto): Promise<Personal> {
+    // Casteamos a 'any' para acceder a propiedades si el DTO es estricto, o úsalas directo
+    const datos = createPersonalDto as any;
+
+    // 1. Validar teléfono
+    if (!datos.telefono) throw new BadRequestException("El teléfono es obligatorio.");
+
+    // 2. Verificar si ya existe usuario con ese teléfono
+    const existeUser = await this.userRepository.findOne({ where: { telefono: datos.telefono } });
+    if (existeUser) throw new BadRequestException("Ya existe un usuario registrado con este teléfono.");
+
+    // 3. Generar Username (ej. carlos.perez123)
+    const baseName = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.');
+    const randomSuffix = Math.floor(Math.random() * 1000);
+    const usernameGen = `${baseName}${randomSuffix}`;
+
+    // 4. Crear Usuario (Login)
+    const nuevoUsuario = this.userRepository.create({
+        nombre: datos.nombre,
+        telefono: datos.telefono,
+        username: usernameGen,
+        rol: datos.rol === 'asistente' ? UserRole.ASISTENTE : UserRole.TUTOR, 
+        estatus: UserStatus.INVITADO,
+        contrasena: undefined
+    });
+    
+    const usuarioGuardado = await this.userRepository.save(nuevoUsuario);
+
+    // 5. Crear Registro de Personal (Datos laborales) y vincular usuario
+    const newPersonal = this.personalRepository.create({
+      ...createPersonalDto,
+      userId: usuarioGuardado.id, // ¡Vinculación clave!
+      estado: 'activo',
+    });
+
+    return await this.personalRepository.save(newPersonal);
+  }
+
+  // --- ACTUALIZAR ---
   async update(id: string, updatePersonalDto: UpdatePersonalDto): Promise<Personal> {
     const personalExistente = await this.personalRepository.findOne({ 
       where: { id: id },
@@ -70,19 +104,26 @@ export class PersonalService {
       ...updatePersonalDto,  
     });
     
-    // --- ¡ESTA ES LA VALIDACIÓN QUE FALTABA! ---
-    // (Arregla el error de "sobrecarga" y "undefined")
     if (!personalActualizado) {
       throw new NotFoundException(`No se pudo cargar el personal para actualizar`);
     }
-    // --- FIN DE LA CORRECCIÓN ---
 
     return this.personalRepository.save(personalActualizado);
   }
 
-  // --- ELIMINAR (Borrado Físico) ---
+  // --- ELIMINAR (Borra Personal y Usuario asociado) ---
   async remove(id: string): Promise<void> {
-    const personal = await this.findOne(id); // Revisa si existe
+    const personal = await this.personalRepository.findOne({ where: { id } });
+    
+    if (!personal) {
+        throw new NotFoundException('Personal no encontrado');
+    }
+
+    // Opcional: Borrar también el usuario asociado para limpiar la tabla Users
+    if(personal.userId) {
+        await this.userRepository.delete(personal.userId);
+    }
+    
     await this.personalRepository.remove(personal);
   }
 }
