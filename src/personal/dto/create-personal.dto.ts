@@ -1,29 +1,30 @@
-import { IsString, IsNotEmpty, IsNumber, IsDateString, IsOptional, IsIn, IsUUID} from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID, IsIn } from 'class-validator';
 
 export class CreatePersonalDto {
   @IsString()
   @IsNotEmpty()
-  readonly nombre: string;
+  nombre: string;
 
   @IsString()
   @IsNotEmpty()
-  @IsIn(['Chofer', 'Asistente', 'Administrativo', 'Otro'])
-  readonly puesto: string;
+  // Aceptamos tanto mayúsculas como minúsculas para evitar errores
+  @IsIn(['Chofer', 'Asistente', 'Administrativo', 'Otro', 'asistente', 'chofer', 'administrativo']) 
+  puesto: string;
 
   @IsString()
-  @IsOptional()
-  readonly contacto: string;
+  @IsNotEmpty()
+  telefono: string; // Ahora sí aceptamos 'telefono' desde el front
 
   @IsNumber()
   @IsOptional()
-  readonly salario: number;
+  salario?: number;
 
-  @IsDateString()
+  @IsUUID()
+  @IsOptional() // IMPORTANTE: Opcional, porque al crear no siempre tiene vehículo
+  vehiculoId?: string;
+
+  // Campo auxiliar para crear el usuario asociado
+  @IsString()
   @IsOptional()
-  readonly fechaContratacion: string;
-  
-  // --- CAMBIO AQUÍ ---
-  @IsUUID() // Ahora validamos que sea un UUID
-  @IsNotEmpty()
-  readonly vehiculoId: string; // Antes se llamaba 'recorridoId'
+  rol?: string;
 }
