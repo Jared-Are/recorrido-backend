@@ -40,7 +40,6 @@ export class UsersService {
       const emailFantasma = `${usernameFinal}@recorrido.app`; 
       const passwordTemporal = `Temp${Math.random().toString(36).slice(-8)}`; 
 
-      // CORRECCIÓN AQUÍ: Forzamos el tipo 'string' para evitar conflicto con UUID estricto
       let authUserId: string = crypto.randomUUID(); 
       
       try {
@@ -51,7 +50,6 @@ export class UsersService {
             user_metadata: { nombre: datos.nombre, rol: datos.rol }
           });
           
-          // Ahora sí podemos asignar el string de supabase a nuestra variable string
           if (authUser?.user) authUserId = authUser.user.id;
       } catch (e) { console.log("Supabase create skipped or failed", e); }
 
@@ -105,6 +103,7 @@ export class UsersService {
     if (!user) throw new NotFoundException("Link inválido.");
 
     try {
+        // Importante: Al activar, sincronizamos la contraseña en Supabase
         await this.supabaseService.admin.updateUserById(user.id, { password: contrasena });
     } catch(e) { console.log("Sync pass failed"); }
 
@@ -118,85 +117,102 @@ export class UsersService {
   async login(username: string, contrasena: string) {
     const user = await this.usersRepository.createQueryBuilder("user")
       .where("user.username = :username", { username })
-      .addSelect("user.contrasena") // Aunque ya no la usamos para login principal, la traemos por si acaso
+      .addSelect("user.contrasena") 
       .getOne();
 
     if (!user) throw new UnauthorizedException("Usuario no encontrado.");
     if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
 
-    // Autenticar contra Supabase usando el email fantasma
+    // Login contra Supabase
     const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
         email: user.email, 
         password: contrasena
     });
 
-    if (error) throw new UnauthorizedException("Contraseña incorrecta.");
+    if (error) {
+        // Si falla en Supabase, podría ser por desincronización. 
+        // Opcional: Si la contraseña local coincide, forzamos login devolviendo token manual o relanzamos error.
+        console.error("Error Supabase Login:", error.message);
+        throw new UnauthorizedException("Contraseña incorrecta.");
+    }
 
-    // Devolvemos el usuario local + el token real de Supabase
     return { ...user, access_token: data.session.access_token };
   }
 
-  // --- 🚨 RESCATE INTELIGENTE (FIX ADMIN) ---
+  // --- 🚨 RESCATE TOTAL (Sincronización de IDs) ---
   async createAdminSeed() {
-    let admin = await this.usersRepository.findOneBy({ username: 'admin' });
-    
-    if (!admin) {
-        admin = await this.usersRepository.findOne({ where: { rol: UserRole.PROPIETARIO } });
-    }
+    const emailAdmin = "admin@recorrido.app";
+    const passAdmin = "123456";
+    let supabaseId: string | null = null;
 
-    if (admin) {
-        // REPARAR ADMIN EXISTENTE
-        admin.username = 'admin';       
-        admin.estatus = UserStatus.ACTIVO; 
-        
-        if (!admin.email || !admin.email.includes('@')) {
-            admin.email = 'admin@recorrido.app';
-        }
-
-        try {
-            await this.supabaseService.admin.updateUserById(admin.id, {
-                email: admin.email,
-                password: '123456',
-                user_metadata: { rol: 'propietario' }
-            });
-        } catch (e) {
-             try {
-                const { data } = await this.supabaseService.admin.createUser({
-                    email: admin.email,
-                    password: '123456',
-                    email_confirm: true,
-                    user_metadata: { rol: 'propietario' }
-                });
-                if (data.user) admin.id = data.user.id;
-             } catch (createErr) { console.log("Error recreando admin", createErr); }
-        }
-
-        await this.usersRepository.save(admin);
-        return { message: "✅ Tu usuario Admin ha sido REPARADO. Usa: admin / 123456" };
-    }
-
-    // CREAR NUEVO ADMIN SI NO EXISTE NADA
-    const nuevoId = crypto.randomUUID();
-    const nuevoAdmin = this.usersRepository.create({
-        id: nuevoId,
-        nombre: "Super Admin",
-        username: "admin",
-        telefono: "00000000",
-        email: "admin@recorrido.app",
-        rol: UserRole.PROPIETARIO,
-        estatus: UserStatus.ACTIVO
-    });
-    
+    // 1. Buscar o Crear en Supabase para obtener el ID REAL
     try {
-        await this.supabaseService.admin.createUser({
-            email: "admin@recorrido.app",
-            password: "123456",
+        // Intentamos listar usuarios (solo si tenemos service_role key)
+        // O simplemente intentamos crear y si falla porque existe, no pasa nada, pero necesitamos el ID.
+        // La forma más fácil sin listar es crear.
+        const { data, error } = await this.supabaseService.admin.createUser({
+            email: emailAdmin,
+            password: passAdmin,
             email_confirm: true,
             user_metadata: { rol: 'propietario' }
         });
-    } catch(e) {}
 
-    await this.usersRepository.save(nuevoAdmin);
-    return { message: "✅ Usuario Creado desde cero: admin / 123456" };
+        if (data.user) {
+            supabaseId = data.user.id;
+            console.log("✅ Admin creado en Supabase. ID:", supabaseId);
+        } else if (error) {
+            console.log("ℹ️ Admin ya existe en Supabase. Intentando recuperar ID...");
+            // Si ya existe, no podemos obtener el ID fácilmente sin hacer login o list users.
+            // Hacemos un login temporal para sacar el ID.
+             const { data: loginData } = await this.supabaseService.client.auth.signInWithPassword({
+                email: emailAdmin,
+                password: passAdmin
+            });
+            if (loginData.user) supabaseId = loginData.user.id;
+        }
+    } catch (e) {
+        console.error("Error conectando con Supabase:", e);
+    }
+
+    if (!supabaseId) {
+        return { message: "❌ Error crítico: No se pudo obtener el ID de Supabase. Verifica credenciales." };
+    }
+
+    // 2. Buscar admin local
+    let adminLocal = await this.usersRepository.findOneBy({ username: 'admin' });
+    
+    if (adminLocal) {
+        // SI EL ID NO COINCIDE, LO ARREGLAMOS
+        if (adminLocal.id !== supabaseId) {
+            console.log(`⚠️ Detectado ID desincronizado. Local: ${adminLocal.id} vs Supabase: ${supabaseId}`);
+            
+            // Borramos el local viejo (para evitar conflicto de PK)
+            await this.usersRepository.delete(adminLocal.id);
+            
+            // Lo recreamos con el ID correcto
+            const nuevoAdmin = this.usersRepository.create({
+                ...adminLocal,
+                id: supabaseId, // <--- LA CLAVE DEL ÉXITO
+                email: emailAdmin,
+                contrasena: undefined // Limpiamos pass local
+            });
+            await this.usersRepository.save(nuevoAdmin);
+            return { message: "✅ Admin SINCRONIZADO. IDs corregidos." };
+        }
+    } else {
+        // Si no existe local, lo creamos con el ID de Supabase
+        const nuevoAdmin = this.usersRepository.create({
+            id: supabaseId, // <--- LA CLAVE DEL ÉXITO
+            nombre: "Super Admin",
+            username: "admin",
+            telefono: "00000000",
+            email: emailAdmin,
+            rol: UserRole.PROPIETARIO,
+            estatus: UserStatus.ACTIVO
+        });
+        await this.usersRepository.save(nuevoAdmin);
+    }
+
+    return { message: "✅ Sistema Sincronizado: admin / 123456" };
   }
 }
