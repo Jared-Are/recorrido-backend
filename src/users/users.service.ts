@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserStatus, UserRole } from './user.entity';
 import { SupabaseService } from '../supabase/supabase.service'; 
+import * as crypto from 'crypto'; // Importamos crypto para UUIDs
 
 @Injectable()
 export class UsersService {
@@ -20,69 +21,52 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- BUSCAR EMAIL Y ROL PARA LOGIN ---
-  async findEmailByIdentifier(identifier: string) {
-    const user = await this.usersRepository.findOne({
-      where: [
-        { username: identifier },
-        { telefono: identifier },
-        { email: identifier }
-      ],
-      select: ['email', 'rol'] 
-    });
-
-    if (!user) throw new NotFoundException('Usuario no encontrado en el sistema.');
-    return { email: user.email, rol: user.rol };
-  }
-
-  // --- CREAR USUARIO ---
+  // --- 1. CREAR USUARIO (Con Email Fantasma) ---
   async create(datos: Partial<User>) {
     try {
-      const telefonoLimpio = datos.telefono && datos.telefono.trim() !== '' ? datos.telefono : undefined;
+      // A. Validaciones Básicas
+      const telefonoLimpio = datos.telefono?.trim();
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
-      // 1. Verificar duplicado local
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
-      if (existe) throw new BadRequestException(`Ya existe un usuario local con el teléfono ${telefonoLimpio}`);
+      if (existe) throw new BadRequestException(`Ya existe un usuario con el teléfono ${telefonoLimpio}`);
 
-      const emailParaSupabase = datos.email || `${telefonoLimpio}@sin-email.com`;
-      const passwordTemporal = `Temp${Math.floor(100000 + Math.random() * 900000)}`; 
-
-      // 2. Crear en Supabase
-      const { data: authUser, error: authError } = await this.supabaseService.admin.createUser({
-        email: emailParaSupabase,
-        password: passwordTemporal,
-        email_confirm: true,
-        user_metadata: {
-          nombre: datos.nombre,
-          telefono: telefonoLimpio,
-          rol: datos.rol || UserRole.TUTOR
-        }
-      });
-
-      if (authError) {
-        console.error("Error Supabase:", authError);
-        throw new BadRequestException(`Error al crear en Supabase: ${authError.message}`);
-      }
-
-      // 3. Generar username
+      // B. Generar Username y Email Fantasma
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
-        const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.');
+        const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
         const random = Math.floor(1000 + Math.random() * 9000);
         usernameFinal = `${base}${random}`;
       }
 
-      // 4. Guardar en Local usando el ID de Supabase
+      // EL TRUCO: Creamos un email interno que el usuario nunca ve
+      const emailFantasma = `${usernameFinal}@recorrido.app`; 
+      const passwordTemporal = `Temp${Math.random().toString(36).slice(-8)}`; 
+
+      // C. Crear en Supabase (Fuente de Verdad de Seguridad)
+      // Usamos el admin para crearlo sin enviar correo de confirmación real
+      const { data: authUser, error: authError } = await this.supabaseService.admin.createUser({
+        email: emailFantasma,
+        password: passwordTemporal,
+        email_confirm: true, // Lo marcamos confirmado para que pueda entrar
+        user_metadata: { nombre: datos.nombre, rol: datos.rol }
+      });
+
+      if (authError) {
+        console.error("Error Supabase:", authError);
+        throw new BadRequestException("Error de seguridad al crear usuario.");
+      }
+
+      // D. Guardar en Base de Datos Local (Referencia)
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
-        id: authUser.user.id, // ¡IMPORTANTE! Sincronizamos IDs
+        id: authUser.user.id, // Vinculamos con el ID seguro de Supabase
         username: usernameFinal,
         telefono: telefonoLimpio,
-        email: emailParaSupabase, 
+        email: emailFantasma, // Guardamos el email fantasma por si acaso
         rol: datos.rol || UserRole.TUTOR,
-        estatus: UserStatus.ACTIVO, 
-        contrasena: undefined,
+        estatus: UserStatus.INVITADO, 
+        contrasena: undefined, // ¡YA NO GUARDAMOS LA CONTRASEÑA AQUÍ!
       });
 
       return await this.usersRepository.save(nuevoUsuario);
@@ -94,55 +78,111 @@ export class UsersService {
     }
   }
 
-  // --- GENERAR INVITACIÓN (CON AUTO-REPARACIÓN) ---
+  // --- 2. GENERAR INVITACIÓN (Token Local) ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });
-    if (!user) throw new NotFoundException('Usuario no encontrado en BD local');
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Token de un solo uso para validar que tiene permiso de poner contraseña
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    user.invitationToken = token;
+    
+    // Aseguramos que tenga username por si acaso (migración de datos viejos)
+    if (!user.username) {
+       const nombreBase = user.nombre ? user.nombre : 'usuario';
+       const base = nombreBase.trim().toLowerCase().replace(/\s+/g, '.');
+       user.username = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
+    await this.usersRepository.save(user);
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const linkActivacion = `${frontendUrl}/activar?token=${token}`;
+    
+    const mensaje = `Hola ${user.nombre}, bienvenido.\n\n👤 Tu Usuario: *${user.username}*\n🔐 Crea tu contraseña aquí: ${linkActivacion}`;
 
-    // INTENTO 1: Generar Link
-    let { data, error } = await this.supabaseService.admin.generateLink({
-      type: 'recovery',
-      email: user.email,
-      options: { redirectTo: `${frontendUrl}/actualizar-password` }
+    return { link: linkActivacion, telefono: user.telefono, mensaje };
+  }
+
+  // --- 3. ACTIVAR CUENTA (Establecer Password en Supabase) ---
+  async activarCuenta(token: string, contrasena: string) {
+    // A. Validar Token Local
+    const user = await this.usersRepository.findOneBy({ invitationToken: token });
+    if (!user) throw new NotFoundException("El enlace de activación no es válido o ya fue usado.");
+
+    // B. Actualizar Password en Supabase (SEGURIDAD REAL)
+    const { error } = await this.supabaseService.admin.updateUserById(user.id, {
+        password: contrasena
     });
 
-    // AUTO-REPARACIÓN: Si el usuario no existe en Supabase (data vieja), lo creamos
-    if (error && error.message.includes('User not found')) {
-        console.log(`⚠️ Usuario ${user.email} no encontrado en Supabase. Reparando...`);
-        
-        // Lo creamos silenciosamente en Supabase
-        const { error: createError } = await this.supabaseService.admin.createUser({
-            email: user.email,
-            password: `Temp${Math.random().toString().slice(-8)}`, // Pass temporal cualquiera
-            email_confirm: true,
-            user_metadata: { nombre: user.nombre, telefono: user.telefono }
-        });
-
-        if (createError) {
-            console.error("❌ Falló la reparación:", createError);
-            throw new BadRequestException(`Error de sincronización: ${createError.message}`);
-        }
-
-        // INTENTO 2: Generar Link de nuevo
-        const retry = await this.supabaseService.admin.generateLink({
-            type: 'recovery',
-            email: user.email,
-            options: { redirectTo: `${frontendUrl}/actualizar-password` }
-        });
-        data = retry.data;
-        error = retry.error;
+    if (error) {
+        console.error("Error actualizando password en Supabase:", error);
+        throw new BadRequestException("No se pudo establecer la contraseña segura.");
     }
 
-    if (error || !data.properties?.action_link) {
-      console.error("❌ Error final Supabase:", error);
-      throw new BadRequestException(`No se pudo generar el link: ${error?.message || 'Error desconocido'}`);
-    }
+    // C. Actualizar Estado Local
+    user.estatus = UserStatus.ACTIVO;
+    user.invitationToken = null as any; // Quemamos el token
+
+    return await this.usersRepository.save(user);
+  }
+
+  // --- 4. LOGIN (Proxy a Supabase) ---
+  async login(username: string, contrasena: string) {
+    // A. Buscar el email fantasma basado en el username
+    const user = await this.usersRepository.findOne({ where: { username } });
     
-    const linkMagico = data.properties.action_link;
-    const mensaje = `Hola ${user.nombre}, bienvenido al Recorrido Escolar.\n\n👤 Usuario: *${user.username}*\n🔗 Toca este enlace para crear tu contraseña y entrar:\n${linkMagico}`;
+    if (!user) throw new UnauthorizedException("Usuario no encontrado.");
+    if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
 
-    return { link: linkMagico, telefono: user.telefono, mensaje: mensaje };
+    // B. Autenticar contra Supabase usando el email fantasma
+    const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
+        email: user.email, // Usamos el email fantasma (juan@recorrido.app)
+        password: contrasena
+    });
+
+    if (error) {
+        throw new UnauthorizedException("Contraseña incorrecta.");
+    }
+
+    // C. Devolver sesión y datos del usuario
+    return {
+        ...user,
+        access_token: data.session.access_token, // Token real de Supabase
+    };
+  }
+
+  // --- RESCATE (ADMIN) ---
+  async createAdminSeed() {
+    const existe = await this.usersRepository.findOneBy({ username: 'admin' });
+    if(existe) return { message: "Admin ya existe" };
+    
+    // Crear en Supabase directo
+    const emailAdmin = "admin@recorrido.app";
+    const passAdmin = "123456";
+    
+    let userId: any = crypto.randomUUID();
+    
+    try {
+        const { data } = await this.supabaseService.admin.createUser({
+            email: emailAdmin,
+            password: passAdmin,
+            email_confirm: true
+        });
+        if(data.user) userId = data.user.id;
+    } catch(e) { console.log("Admin ya existía en Supabase, continuando..."); }
+
+    const admin = this.usersRepository.create({
+        id: userId,
+        nombre: "Super Admin",
+        username: "admin",
+        telefono: "00000000",
+        email: emailAdmin,
+        rol: UserRole.PROPIETARIO,
+        estatus: UserStatus.ACTIVO
+    });
+
+    await this.usersRepository.save(admin);
+    return { message: "Admin creado: admin / 123456" };
   }
 }

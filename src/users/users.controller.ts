@@ -1,7 +1,5 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { User } from './user.entity';
-import { Public } from '../common/public.decorator'; // <--- IMPORTANTE: El decorador que creamos
 
 @Controller('users')
 export class UsersController {
@@ -13,30 +11,39 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
-  // 2. BUSCAR UN USUARIO POR ID
+  // 2. CREAR USUARIO (Manual desde el panel)
+  @Post()
+  create(@Body() body: any) {
+    return this.usersService.create(body);
+  }
+
+  // --- 🚨 BOTÓN DE PÁNICO (RESCATE) ---
+  @Get('seed')
+  crearAdminDeEmergencia() {
+    return this.usersService.createAdminSeed();
+  }
+
+  // 3. BUSCAR UN USUARIO POR ID
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
-  // 3. CREAR USUARIO (Llama a Supabase y luego guarda local)
-  // Este requiere token (solo admin/propietario debería poder crear)
-  @Post()
-  create(@Body() datos: Partial<User>) {
-    return this.usersService.create(datos);
-  }
-
   // 4. GENERAR INVITACIÓN WHATSAPP
   @Post(':id/invitacion')
-  invitarUsuario(@Param('id') id: string) {
+  generarInvitacion(@Param('id') id: string) {
     return this.usersService.generarTokenInvitacion(id);
   }
 
-  // 5. BUSCAR EMAIL POR USUARIO (LOGIN HÍBRIDO)
-  // Este DEBE ser público para que el usuario pueda preguntar su email antes de tener token.
-  @Public()
-  @Post('lookup')
-  async lookupEmail(@Body() body: { identifier: string }) {
-    return this.usersService.findEmailByIdentifier(body.identifier);
+  // 5. ACTIVAR CUENTA
+  @Post('activar')
+  activar(@Body() body: { token: string; password: string }) {
+    return this.usersService.activarCuenta(body.token, body.password);
+  }
+
+  // 6. INICIAR SESIÓN (Por Username)
+  @Post('login')
+  login(@Body() body: { username: string; contrasena: string }) {
+    return this.usersService.login(body.username, body.contrasena);
   }
 }
