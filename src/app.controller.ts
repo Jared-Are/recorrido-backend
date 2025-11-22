@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
+import { Public } from './common/public.decorator'; // <--- Importante
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
-
+  
+  // Este decorador permite ver la página sin estar logueado
+  @Public() 
   @Get()
   getHello(): string {
-    return this.appService.getHello();
+    return 'El servidor del Recorrido Escolar está funcionando correctamente 🚀';
   }
 }
