@@ -19,6 +19,12 @@ export class CreatePersonalDto {
   @IsOptional()
   salario?: number;
 
+    // ESTA ES LA LÍNEA QUE ARREGLA TU ERROR
+  // Debe tener un decorador (@IsString o @IsDateString) para ser aceptada
+  @IsString()
+  @IsOptional()
+  fechaContratacion?: string;
+
   @IsUUID()
   @IsOptional() // IMPORTANTE: Opcional, porque al crear no siempre tiene vehículo
   vehiculoId?: string;
