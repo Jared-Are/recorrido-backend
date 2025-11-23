@@ -32,14 +32,17 @@ export class UsersService {
 
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
+        // Generar username base: juan.perez + 4 digitos
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
         const random = Math.floor(1000 + Math.random() * 9000);
         usernameFinal = `${base}${random}`;
       }
 
+      // Email fantasma para Supabase
       const emailFantasma = `${usernameFinal}@recorrido.app`; 
       const passwordTemporal = `Temp${Math.random().toString(36).slice(-8)}`; 
 
+      // Forzamos string para evitar error de tipos UUID
       let authUserId: string = crypto.randomUUID(); 
       
       try {
@@ -55,7 +58,7 @@ export class UsersService {
 
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
-        id: authUserId,
+        id: authUserId, // Sincronizamos ID
         username: usernameFinal,
         telefono: telefonoLimpio,
         email: emailFantasma, 
@@ -112,8 +115,9 @@ export class UsersService {
     return await this.usersRepository.save(user);
   }
 
-  // --- 4. LOGIN (¡AQUÍ ESTABA EL ERROR!) ---
+  // --- 4. LOGIN ---
   async login(username: string, contrasena: string) {
+    // Buscamos usuario localmente para obtener su email fantasma
     const user = await this.usersRepository.createQueryBuilder("user")
       .where("user.username = :username", { username })
       .addSelect("user.contrasena") 
@@ -135,7 +139,7 @@ export class UsersService {
 
     const { contrasena: pass, invitationToken, ...result } = user;
 
-    // CORRECCIÓN: DEVOLVEMOS EL TOKEN AL FRONTEND
+    // DEVOLVEMOS EL TOKEN PARA QUE EL FRONTEND PUEDA USARLO
     return { 
         ...result, 
         access_token: data.session.access_token,
@@ -143,12 +147,13 @@ export class UsersService {
     };
   }
 
-  // --- 🚨 RESCATE ---
+  // --- 🚨 RESCATE INTELIGENTE (FIX ADMIN) ---
   async createAdminSeed() {
     const emailAdmin = "admin@recorrido.app";
     const passAdmin = "123456";
     let supabaseId: string | null = null;
 
+    // 1. Obtener ID real de Supabase
     try {
         const { data, error } = await this.supabaseService.admin.createUser({
             email: emailAdmin,
@@ -168,23 +173,41 @@ export class UsersService {
         }
     } catch (e) { console.error(e); }
 
-    if (!supabaseId) return { message: "❌ Error crítico: Falló Supabase." };
+    if (!supabaseId) return { message: "❌ Error: No conectó con Supabase." };
 
+    // 2. Reparar DB Local
     let adminLocal = await this.usersRepository.findOneBy({ username: 'admin' });
     
+    // Si no existe por username, busca por rol (tu usuario viejo roto)
+    if (!adminLocal) {
+        adminLocal = await this.usersRepository.findOne({ where: { rol: UserRole.PROPIETARIO } });
+    }
+    
     if (adminLocal) {
+        // Si el ID no coincide, BORRAMOS el local y lo recreamos con el ID correcto
         if (adminLocal.id !== supabaseId) {
             await this.usersRepository.delete(adminLocal.id);
+            
             const nuevoAdmin = this.usersRepository.create({
-                ...adminLocal,
-                id: supabaseId,
+                ...adminLocal, 
+                id: supabaseId, // ID DE SUPABASE (CRÍTICO)
+                username: 'admin',
                 email: emailAdmin,
-                contrasena: undefined
+                contrasena: undefined,
+                estatus: UserStatus.ACTIVO
             });
             await this.usersRepository.save(nuevoAdmin);
-            return { message: "✅ Admin SINCRONIZADO." };
+            return { message: "✅ Admin REPARADO y SINCRONIZADO." };
+        } else {
+            // Solo aseguramos datos
+            adminLocal.username = 'admin';
+            adminLocal.email = emailAdmin;
+            adminLocal.estatus = UserStatus.ACTIVO;
+            await this.usersRepository.save(adminLocal);
+            return { message: "✅ Admin actualizado correctamente." };
         }
     } else {
+        // Si no existe local, lo creamos
         const nuevoAdmin = this.usersRepository.create({
             id: supabaseId,
             nombre: "Super Admin",
@@ -195,8 +218,7 @@ export class UsersService {
             estatus: UserStatus.ACTIVO
         });
         await this.usersRepository.save(nuevoAdmin);
+        return { message: "✅ Admin CREADO: admin / 123456" };
     }
-
-    return { message: "✅ Sistema Sincronizado: admin / 123456" };
   }
 }
