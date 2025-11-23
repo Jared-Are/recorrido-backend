@@ -1,15 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // 1. HABILITAR CORS (Crucial para que el frontend pueda enviar el token)
+  // 1. HABILITAR CORS
   app.enableCors({
-    origin: '*', // Permitir todo (para desarrollo es lo mejor)
+    origin: '*', 
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    allowedHeaders: 'Content-Type, Authorization, x-user-id', // Aceptamos nuestros headers
+    allowedHeaders: 'Content-Type, Authorization, x-user-id', 
   });
 
   // 2. Validaciones globales
@@ -21,7 +22,12 @@ async function bootstrap() {
     }),
   );
 
-  // 3. Usar el puerto de Render o el 3000
-  await app.listen(process.env.PORT || 3000);
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  
+  logger.log(`\n\n🚀 ============================================================`);
+  logger.log(`🚀 SERVIDOR INICIADO EN PUERTO: ${port}`);
+  logger.log(`🚀 VERSIÓN DE DEBUG: USERS MODULE FIX (Si lees esto, el código es nuevo)`);
+  logger.log(`🚀 ============================================================\n\n`);
 }
 bootstrap();

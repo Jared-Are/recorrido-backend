@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core'; // <--- Necesario para el guardia global
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
-// Tus módulos de funcionalidad
+// Módulos
 import { AlumnosModule } from './alumnos/alumnos.module';
 import { AsistenciaModule } from './asistencias/asistencia.module';
-import { UsersModule } from './users/users.module';
+import { UsersModule } from './users/users.module'; // 👈 AQUÍ
 import { PagosModule } from './pagos/pagos.module';
 import { GastosModule } from './gastos/gastos.module';
 import { PersonalModule } from './personal/personal.module';
@@ -20,16 +20,13 @@ import { TutorModule } from './tutor/tutor.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { SolicitudesModule } from './solicitudes/solicitudes.module';
 
-// Módulo de Supabase y Guardia de Seguridad
+// Supabase
 import { SupabaseModule } from './supabase/supabase.module';
 import { AuthGuard } from './supabase/auth.guard'; 
 
 @Module({
   imports: [
-    // 1. Configuración Global (.env)
     ConfigModule.forRoot({ isGlobal: true }),
-
-    // 2. Base de Datos (Conexión segura a Supabase)
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -42,15 +39,15 @@ import { AuthGuard } from './supabase/auth.guard';
         database: configService.get<string>('DB_NAME'),
         autoLoadEntities: true,
         synchronize: true,
-        ssl: { rejectUnauthorized: false }, // Requerido por Render/Supabase
+        ssl: { rejectUnauthorized: false }, 
       }),
     }),
-
-    // 3. Módulos de la Aplicación
+    
+    // Módulos funcionales
     SupabaseModule,
+    UsersModule, // 👈 TIENE QUE ESTAR AQUÍ
     AlumnosModule,
     AsistenciaModule,
-    UsersModule,
     PagosModule,
     GastosModule,
     PersonalModule,
@@ -65,8 +62,6 @@ import { AuthGuard } from './supabase/auth.guard';
   controllers: [AppController],
   providers: [
     AppService,
-    // 4. ACTIVAR SEGURIDAD EN TODA LA APP
-    // Esto hace que todos los endpoints requieran token, excepto los marcados con @Public()
     {
       provide: APP_GUARD,
       useClass: AuthGuard,
