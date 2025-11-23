@@ -7,6 +7,7 @@ export enum UserStatus {
   ACTIVO = 'ACTIVO',
 }
 
+// Mantenemos el enum por si lo usas en otros lados, pero la entidad usará string
 export enum UserRole {
   PROPIETARIO = 'propietario',
   ASISTENTE = 'asistente',
@@ -34,19 +35,23 @@ export class User {
   @Column({ type: 'text', nullable: true })
   nombre: string;
 
+  // 👇 1. AGREGA ESTO (TypeORM necesita saber que existe)
+  @Column({ type: 'uuid', nullable: true })
+  auth_user_id: string;
+
+  // 👇 2. VERSIÓN UNIFICADA (Solo string para evitar errores)
+  @Column({
+    type: 'text', 
+    default: 'tutor',
+  })
+  rol: string;
+
   @Column({
     type: 'enum',
     enum: UserStatus,
     default: UserStatus.INVITADO,
   })
   estatus: UserStatus;
-
-  @Column({
-    type: 'enum',
-    enum: UserRole,
-    default: UserRole.TUTOR,
-  })
-  rol: UserRole;
 
   @Column({ type: 'text', nullable: true, select: false })
   invitationToken: string;

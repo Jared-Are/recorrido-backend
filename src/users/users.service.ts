@@ -62,7 +62,7 @@ export class UsersService {
         username: usernameFinal,
         telefono: telefonoLimpio,
         email: emailFantasma, 
-        rol: datos.rol || UserRole.TUTOR,
+        rol: datos.rol || 'tutor',
         estatus: UserStatus.INVITADO, 
         contrasena: undefined, 
       });
@@ -115,16 +115,38 @@ export class UsersService {
     return await this.usersRepository.save(user);
   }
 
-  // --- 4. LOGIN ---
+  // --- 4. LOGIN (DEBUG VERSION) ---
   async login(username: string, contrasena: string) {
-    // Buscamos usuario localmente para obtener su email fantasma
-    const user = await this.usersRepository.createQueryBuilder("user")
-      .where("user.username = :username", { username })
-      .addSelect("user.contrasena") 
-      .getOne();
+    console.log('\n--- 🕵️ DEBUG LOGIN INICIO ---');
+    console.log('1. Dato recibido (Username):', `"${username}"`);
+    console.log('2. Dato recibido (Pass):', contrasena);
 
-    if (!user) throw new UnauthorizedException("Usuario no encontrado.");
-    if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
+    if (!username) {
+        console.error('❌ ERROR: El username llegó UNDEFINED. Revisa el Frontend/Postman.');
+        throw new BadRequestException("Username es obligatorio");
+    }
+
+    const query = this.usersRepository.createQueryBuilder("user")
+      .where("user.username = :username", { username })
+      .addSelect("user.contrasena");
+
+    console.log('3. SQL Generado:', query.getSql());
+
+    const user = await query.getOne();
+
+    console.log('4. ¿Qué encontró la BD?:', user); 
+
+    if (!user) {
+        console.error('❌ ERROR: La consulta devolvió NULL. El usuario no se encuentra.');
+        throw new UnauthorizedException("Usuario no encontrado.");
+    }
+
+    if (user.estatus !== UserStatus.ACTIVO) {
+        console.error('❌ ERROR: Usuario encontrado pero INACTIVO.');
+        throw new UnauthorizedException("Cuenta no activada.");
+    }
+
+    console.log('5. Intentando validar con Supabase email:', user.email);
 
     // Login contra Supabase
     const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
@@ -133,13 +155,15 @@ export class UsersService {
     });
 
     if (error) {
-        console.error("Error Supabase Login:", error.message);
-        throw new UnauthorizedException("Contraseña incorrecta.");
+        console.error("❌ Error Supabase Login:", error.message);
+        throw new UnauthorizedException("Contraseña incorrecta (Supabase rechazó).");
     }
+
+    console.log('✅ LOGIN EXITOSO');
+    console.log('--- DEBUG FIN ---\n');
 
     const { contrasena: pass, invitationToken, ...result } = user;
 
-    // DEVOLVEMOS EL TOKEN PARA QUE EL FRONTEND PUEDA USARLO
     return { 
         ...result, 
         access_token: data.session.access_token,
@@ -178,9 +202,9 @@ export class UsersService {
     // 2. Reparar DB Local
     let adminLocal = await this.usersRepository.findOneBy({ username: 'admin' });
     
-    // Si no existe por username, busca por rol (tu usuario viejo roto)
+    // Si no existe por username, busca por rol
     if (!adminLocal) {
-        adminLocal = await this.usersRepository.findOne({ where: { rol: UserRole.PROPIETARIO } });
+        adminLocal = await this.usersRepository.findOne({ where: { rol: 'propietario' } });
     }
     
     if (adminLocal) {
@@ -214,7 +238,7 @@ export class UsersService {
             username: "admin",
             telefono: "00000000",
             email: emailAdmin,
-            rol: UserRole.PROPIETARIO,
+            rol: 'propietario',
             estatus: UserStatus.ACTIVO
         });
         await this.usersRepository.save(nuevoAdmin);
