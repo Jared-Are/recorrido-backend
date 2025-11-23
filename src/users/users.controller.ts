@@ -27,22 +27,25 @@ export class UsersController {
     return this.usersService.login(body.username, body.contrasena);
   }
 
-  // 3. SEED / ADMIN DE EMERGENCIA
-  @Public()
-  @Get('seed')
-  crearAdminDeEmergencia() {
-    return this.usersService.createAdminSeed();
-  }
-
-  // 4. ACTIVAR CUENTA
+  // 3. ACTIVAR CUENTA (Para establecer contraseña nueva)
   @Public()
   @Post('activar')
   activar(@Body() body: { token: string; password: string }) {
     return this.usersService.activarCuenta(body.token, body.password);
   }
 
+  // ❌ LA RUTA 'SEED' HA SIDO ELIMINADA POR SEGURIDAD ❌
+  // Si necesitas usarla de emergencia, descoméntala temporalmente.
+  /*
+  @Public()
+  @Get('seed')
+  crearAdminDeEmergencia() {
+    return this.usersService.createAdminSeed();
+  }
+  */
+
   // =========================================================
-  // RUTAS PROTEGIDAS O GENÉRICAS
+  // RUTAS PROTEGIDAS O GENÉRICAS (Requieren Token)
   // =========================================================
 
   @Get()

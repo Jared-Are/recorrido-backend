@@ -12,27 +12,24 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const path = request.path; // Obtenemos la URL que se está visitando
+    const path = request.path; 
 
-    // --- 🚨 LISTA BLANCA MANUAL (FUERZA BRUTA) ---
-    // Esto asegura que estas rutas SIEMPRE sean públicas, falle lo que falle.
+    // --- 🚨 LISTA BLANCA MANUAL (SOLO RUTAS SEGURAS) ---
     const publicPaths = [
-        '/',                  // Raíz
-        '/users/seed',        // Botón de Rescate
+        '/',                  // Raíz (Health check)
         '/users/login',       // Login
+        '/users/lookup',      // Lookup (Agregada)
         '/users/activar',     // Activación
-        '/favicon.ico'        // Icono
+        '/favicon.ico'        
+        // ❌ '/users/seed' ELIMINADO
     ];
 
-    // Si la URL empieza con alguna de las públicas, dejamos pasar
-    // Usamos .some y .startsWith para cubrir casos con query params
     if (publicPaths.some(p => path === p || path.startsWith(p + '/'))) {
-        console.log(`🔓 Acceso Libre (Lista Blanca): ${path}`);
         return true;
     }
     // ---------------------------------------------
 
-    // 1. Revisar decorador @Public (Método normal)
+    // 1. Revisar decorador @Public
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -44,7 +41,7 @@ export class AuthGuard implements CanActivate {
     const token = this.extractTokenFromHeader(request);
     
     if (!token) {
-      console.warn(`🔒 Bloqueo: Falta token en ${request.method} ${path}`);
+      // console.warn(`🔒 Bloqueo: Falta token en ${request.method} ${path}`); // Opcional: comentar para menos ruido
       throw new UnauthorizedException('No se encontró token de autenticación');
     }
 

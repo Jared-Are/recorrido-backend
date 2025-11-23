@@ -6,9 +6,33 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // 1. HABILITAR CORS
+  // 🛡️ 1. HABILITAR CORS DE FORMA SEGURA (VERSIÓN VERCEL)
+  const allowedOrigins = [
+    'http://localhost:3000', // Local
+    'http://localhost:3001', // Local alternativo
+    process.env.FRONTEND_URL, // Tu URL principal definida en variables de entorno
+    // Agrega aquí tu dominio exacto de Vercel si lo conoces:
+    'https://recorrido-lac.vercel.app' 
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: '*', 
+    origin: (origin, callback) => {
+      // 1. Permitir peticiones sin origen (Postman, Apps móviles)
+      if (!origin) return callback(null, true);
+
+      // 2. Permitir orígenes explícitos (localhost, variable de entorno)
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      // 3. 🚨 REGLA ESPECIAL PARA VERCEL 🚨
+      // Esto permite tu dominio principal Y las Deploy Previews (ramas de prueba)
+      // Cambia "recorrido" por el nombre de tu proyecto o usa simplemente /\.vercel\.app$/
+      if (origin.endsWith('.vercel.app')) {
+         return callback(null, true);
+      }
+
+      logger.warn(`🔒 Bloqueada petición CORS sospechosa desde: ${origin}`);
+      callback(null, false);
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     allowedHeaders: 'Content-Type, Authorization, x-user-id', 
   });
@@ -25,9 +49,7 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port);
   
-  logger.log(`\n\n🚀 ============================================================`);
-  logger.log(`🚀 SERVIDOR INICIADO EN PUERTO: ${port}`);
-  logger.log(`🚀 VERSIÓN DE DEBUG: USERS MODULE FIX (Si lees esto, el código es nuevo)`);
-  logger.log(`🚀 ============================================================\n\n`);
+  logger.log(`\n\n🛡️ SERVIDOR SEGURO INICIADO EN PUERTO: ${port}`);
+  logger.log(`🛡️ CORS HABILITADO PARA VERCEL Y LOCALHOST\n`);
 }
 bootstrap();

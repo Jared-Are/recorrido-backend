@@ -21,9 +21,9 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- NUEVO: LOOKUP (Para el Frontend) ---
+  // --- LOOKUP (Paso 1 del Login) ---
+  // Verifica si el usuario existe antes de pedir contraseña
   async lookupUser(identifier: string) {
-    // Buscamos por username O teléfono
     const user = await this.usersRepository.findOne({
         where: [
             { username: identifier },
@@ -33,14 +33,14 @@ export class UsersService {
 
     if (!user) throw new NotFoundException("Usuario no encontrado");
     
-    // Retornamos solo lo necesario para que el frontend haga el login con Supabase
+    // Solo devolvemos lo necesario para que el frontend sepa qué rol tiene
     return { 
         email: user.email, 
         rol: user.rol 
     };
   }
 
-  // --- 1. CREAR USUARIO ---
+  // --- CREAR USUARIO ---
   async create(datos: Partial<User>) {
     try {
       const telefonoLimpio = datos.telefono?.trim();
@@ -68,7 +68,10 @@ export class UsersService {
             user_metadata: { nombre: datos.nombre, rol: datos.rol }
           });
           if (authUser?.user) authUserId = authUser.user.id;
-      } catch (e) { console.log("Supabase create skipped or failed", e); }
+      } catch (e) { 
+          // Log seguro (sin mostrar datos sensibles)
+          console.error("Supabase create warning:", e.message); 
+      }
 
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
@@ -90,7 +93,7 @@ export class UsersService {
     }
   }
 
-  // --- 2. GENERAR INVITACIÓN ---
+  // --- GENERAR INVITACIÓN ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('Usuario no encontrado');
@@ -114,14 +117,14 @@ export class UsersService {
     return { link: linkActivacion, telefono: user.telefono, mensaje };
   }
 
-  // --- 3. ACTIVAR CUENTA ---
+  // --- ACTIVAR CUENTA ---
   async activarCuenta(token: string, contrasena: string) {
     const user = await this.usersRepository.findOneBy({ invitationToken: token });
     if (!user) throw new NotFoundException("Link inválido.");
 
     try {
         await this.supabaseService.admin.updateUserById(user.id, { password: contrasena });
-    } catch(e) { console.log("Sync pass failed"); }
+    } catch(e) { console.error("Error al sincronizar password con Supabase"); }
 
     user.estatus = UserStatus.ACTIVO;
     user.invitationToken = null as any;
@@ -129,40 +132,35 @@ export class UsersService {
     return await this.usersRepository.save(user);
   }
 
-  // --- 4. LOGIN (DEBUG VERSION) ---
+  // --- LOGIN (VERSIÓN BLINDADA 🛡️) ---
   async login(username: string, contrasena: string) {
-    console.log('\n--- 🕵️ DEBUG LOGIN INICIO ---');
-    console.log('1. Dato recibido (Username):', `"${username}"`);
-    console.log('2. Dato recibido (Pass):', contrasena);
+    // 1. Validación básica
+    if (!username) throw new BadRequestException("Username es obligatorio");
 
-    if (!username) {
-        throw new BadRequestException("Username es obligatorio");
-    }
-
+    // 2. Buscar usuario (SIN LOGS DE SQL)
     const query = this.usersRepository.createQueryBuilder("user")
       .where("user.username = :username", { username })
       .addSelect("user.contrasena");
 
-    console.log('3. SQL Generado:', query.getSql());
-
     const user = await query.getOne();
 
-    console.log('4. ¿Qué encontró la BD?:', user); 
-
+    // 3. Validaciones de estado
     if (!user) throw new UnauthorizedException("Usuario no encontrado.");
     if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
 
-    console.log('5. Intentando validar con Supabase email:', user.email);
-
+    // 4. Login contra Supabase
     const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
         email: user.email, 
         password: contrasena
     });
 
-    if (error) throw new UnauthorizedException("Contraseña incorrecta (Supabase rechazó).");
+    if (error) {
+        // Log genérico para debugging interno, pero SIN mostrar la contraseña
+        console.error(`Login fallido para usuario: ${username}. Razón: ${error.message}`);
+        throw new UnauthorizedException("Contraseña incorrecta.");
+    }
 
-    console.log('✅ LOGIN EXITOSO');
-
+    // 5. Limpieza de datos antes de responder
     const { contrasena: pass, invitationToken, ...result } = user;
 
     return { 
@@ -172,7 +170,7 @@ export class UsersService {
     };
   }
 
-  // --- 🚨 RESCATE INTELIGENTE (FIX ADMIN) ---
+  // --- ADMIN SEED (SOLO INTERNO - YA NO SE EXPONE) ---
   async createAdminSeed() {
     const emailAdmin = "admin@recorrido.app";
     const passAdmin = "123456";
@@ -195,7 +193,7 @@ export class UsersService {
             });
             if (loginData.user) supabaseId = loginData.user.id;
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Error interno en seed:", e.message); }
 
     if (!supabaseId) return { message: "❌ Error: No conectó con Supabase." };
 
