@@ -21,6 +21,25 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
+  // --- NUEVO: LOOKUP (Para el Frontend) ---
+  async lookupUser(identifier: string) {
+    // Buscamos por username O teléfono
+    const user = await this.usersRepository.findOne({
+        where: [
+            { username: identifier },
+            { telefono: identifier }
+        ]
+    });
+
+    if (!user) throw new NotFoundException("Usuario no encontrado");
+    
+    // Retornamos solo lo necesario para que el frontend haga el login con Supabase
+    return { 
+        email: user.email, 
+        rol: user.rol 
+    };
+  }
+
   // --- 1. CREAR USUARIO ---
   async create(datos: Partial<User>) {
     try {
@@ -32,17 +51,13 @@ export class UsersService {
 
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
-        // Generar username base: juan.perez + 4 digitos
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
         const random = Math.floor(1000 + Math.random() * 9000);
         usernameFinal = `${base}${random}`;
       }
 
-      // Email fantasma para Supabase
       const emailFantasma = `${usernameFinal}@recorrido.app`; 
       const passwordTemporal = `Temp${Math.random().toString(36).slice(-8)}`; 
-
-      // Forzamos string para evitar error de tipos UUID
       let authUserId: string = crypto.randomUUID(); 
       
       try {
@@ -52,13 +67,12 @@ export class UsersService {
             email_confirm: true,
             user_metadata: { nombre: datos.nombre, rol: datos.rol }
           });
-          
           if (authUser?.user) authUserId = authUser.user.id;
       } catch (e) { console.log("Supabase create skipped or failed", e); }
 
       const nuevoUsuario = this.usersRepository.create({
         ...datos,
-        id: authUserId, // Sincronizamos ID
+        id: authUserId, 
         username: usernameFinal,
         telefono: telefonoLimpio,
         email: emailFantasma, 
@@ -122,7 +136,6 @@ export class UsersService {
     console.log('2. Dato recibido (Pass):', contrasena);
 
     if (!username) {
-        console.error('❌ ERROR: El username llegó UNDEFINED. Revisa el Frontend/Postman.');
         throw new BadRequestException("Username es obligatorio");
     }
 
@@ -136,31 +149,19 @@ export class UsersService {
 
     console.log('4. ¿Qué encontró la BD?:', user); 
 
-    if (!user) {
-        console.error('❌ ERROR: La consulta devolvió NULL. El usuario no se encuentra.');
-        throw new UnauthorizedException("Usuario no encontrado.");
-    }
-
-    if (user.estatus !== UserStatus.ACTIVO) {
-        console.error('❌ ERROR: Usuario encontrado pero INACTIVO.');
-        throw new UnauthorizedException("Cuenta no activada.");
-    }
+    if (!user) throw new UnauthorizedException("Usuario no encontrado.");
+    if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
 
     console.log('5. Intentando validar con Supabase email:', user.email);
 
-    // Login contra Supabase
     const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
         email: user.email, 
         password: contrasena
     });
 
-    if (error) {
-        console.error("❌ Error Supabase Login:", error.message);
-        throw new UnauthorizedException("Contraseña incorrecta (Supabase rechazó).");
-    }
+    if (error) throw new UnauthorizedException("Contraseña incorrecta (Supabase rechazó).");
 
     console.log('✅ LOGIN EXITOSO');
-    console.log('--- DEBUG FIN ---\n');
 
     const { contrasena: pass, invitationToken, ...result } = user;
 
@@ -177,7 +178,6 @@ export class UsersService {
     const passAdmin = "123456";
     let supabaseId: string | null = null;
 
-    // 1. Obtener ID real de Supabase
     try {
         const { data, error } = await this.supabaseService.admin.createUser({
             email: emailAdmin,
@@ -199,22 +199,19 @@ export class UsersService {
 
     if (!supabaseId) return { message: "❌ Error: No conectó con Supabase." };
 
-    // 2. Reparar DB Local
     let adminLocal = await this.usersRepository.findOneBy({ username: 'admin' });
     
-    // Si no existe por username, busca por rol
     if (!adminLocal) {
         adminLocal = await this.usersRepository.findOne({ where: { rol: 'propietario' } });
     }
     
     if (adminLocal) {
-        // Si el ID no coincide, BORRAMOS el local y lo recreamos con el ID correcto
         if (adminLocal.id !== supabaseId) {
             await this.usersRepository.delete(adminLocal.id);
             
             const nuevoAdmin = this.usersRepository.create({
                 ...adminLocal, 
-                id: supabaseId, // ID DE SUPABASE (CRÍTICO)
+                id: supabaseId,
                 username: 'admin',
                 email: emailAdmin,
                 contrasena: undefined,
@@ -223,7 +220,6 @@ export class UsersService {
             await this.usersRepository.save(nuevoAdmin);
             return { message: "✅ Admin REPARADO y SINCRONIZADO." };
         } else {
-            // Solo aseguramos datos
             adminLocal.username = 'admin';
             adminLocal.email = emailAdmin;
             adminLocal.estatus = UserStatus.ACTIVO;
@@ -231,7 +227,6 @@ export class UsersService {
             return { message: "✅ Admin actualizado correctamente." };
         }
     } else {
-        // Si no existe local, lo creamos
         const nuevoAdmin = this.usersRepository.create({
             id: supabaseId,
             nombre: "Super Admin",

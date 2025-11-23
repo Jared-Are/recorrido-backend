@@ -7,25 +7,34 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   // =========================================================
-  // 🚨 IMPORTANTE: LAS RUTAS ESTÁTICAS VAN PRIMERO
+  // 🚨 RUTAS PÚBLICAS Y ESTÁTICAS (DEBEN IR PRIMERO)
+  // Si pones estas abajo de ':id', NestJS pensará que "login" es un ID
   // =========================================================
 
-  // 1. LOGIN (Público)
+  // 1. LOOKUP (Necesario para tu Frontend actual)
+  // Recibe { identifier: "admin" } y devuelve { email: "...", rol: "..." }
+  @Public()
+  @Post('lookup')
+  lookup(@Body() body: { identifier: string }) {
+    console.log('👉 PETICIÓN LOOKUP:', body);
+    return this.usersService.lookupUser(body.identifier);
+  }
+
+  // 2. LOGIN (Alternativa Server-Side)
   @Public()
   @Post('login')
   login(@Body() body: { username: string; contrasena: string }) {
-    console.log('👉 PETICIÓN RECIBIDA EN CONTROLLER: /users/login', body);
     return this.usersService.login(body.username, body.contrasena);
   }
 
-  // 2. SEED / ADMIN DE EMERGENCIA (Público)
+  // 3. SEED / ADMIN DE EMERGENCIA
   @Public()
   @Get('seed')
   crearAdminDeEmergencia() {
     return this.usersService.createAdminSeed();
   }
 
-  // 3. ACTIVAR CUENTA (Público)
+  // 4. ACTIVAR CUENTA
   @Public()
   @Post('activar')
   activar(@Body() body: { token: string; password: string }) {
@@ -33,7 +42,7 @@ export class UsersController {
   }
 
   // =========================================================
-  // LUEGO LAS RUTAS GENÉRICAS
+  // RUTAS PROTEGIDAS O GENÉRICAS
   // =========================================================
 
   @Get()
@@ -47,8 +56,7 @@ export class UsersController {
   }
 
   // =========================================================
-  // 🚨 AL FINAL: LAS RUTAS CON PARÁMETROS (:id)
-  // (Si pones esto arriba, se "come" a las rutas 'seed' o 'login')
+  // 🚨 AL FINAL: LAS RUTAS DINÁMICAS (:id)
   // =========================================================
 
   @Get(':id')
