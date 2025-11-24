@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { AvisosService } from './avisos.service';
 import { CreateAvisoDto } from './dto/create-aviso.dto';
 import { UpdateAvisoDto } from './dto/update-aviso.dto';
+import { AuthGuard } from '../supabase/auth.guard';
 
 @Controller('avisos')
+@UseGuards(AuthGuard)
 export class AvisosController {
   constructor(private readonly avisosService: AvisosService) {}
 
@@ -17,26 +19,22 @@ export class AvisosController {
     return this.avisosService.findAll();
   }
 
-
-
+  // 🚨 RUTAS ESTÁTICAS PRIMERO (Antes de :id)
   @Get('para-tutor')
   findAllParaTutor() {
     return this.avisosService.findAllParaTutor();
   }
 
-  // --- ARREGLO AQUÍ ---
-  // Las rutas estáticas (texto fijo) van PRIMERO
   @Get('para-asistente')
   findAllParaAsistente() {
     return this.avisosService.findAllParaAsistente();
   }
 
-  // Las rutas dinámicas (con parámetros) van DESPUÉS
+  // 🚨 RUTAS DINÁMICAS AL FINAL
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.avisosService.findOne(id);
   }
-  // --- FIN DEL ARREGLO ---
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateAvisoDto: UpdateAvisoDto) {

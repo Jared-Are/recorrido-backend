@@ -7,6 +7,11 @@ import { UpdatePagoDto } from './dto/update-pago.dto';
 import { CreatePagoBatchDto } from './dto/create-pago-batch.dto';
 import { Alumno } from '../alumnos/alumno.entity';
 
+// 👇 IMPORTACIONES NUEVAS (Para Notificaciones y Tiempo Real)
+import { User } from '../users/user.entity';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { EventsGateway } from '../events/events.gateway';
+
 @Injectable()
 export class PagosService {
   constructor(
@@ -15,10 +20,16 @@ export class PagosService {
 
     @InjectRepository(Alumno)
     private alumnosRepository: Repository<Alumno>,
+
+    // 👇 INYECCIONES NUEVAS
+    @InjectRepository(User)
+    private usersRepository: Repository<User>,
+    private notificacionesService: NotificacionesService,
+    private eventsGateway: EventsGateway,
   ) {}
 
   // --- CREAR (UN PAGO) ---
-  // AHORA CON VALIDACIÓN COMPLETA PARA TODOS LOS MESES
+  // TU LÓGICA ORIGINAL + NOTIFICACIONES
   async create(createPagoDto: CreatePagoDto): Promise<Pago> {
     
     const { alumnoId, mes, monto } = createPagoDto;
@@ -44,11 +55,11 @@ export class PagosService {
     // 3. Lógica de Validación (Híbrida)
     if (mes === MES_DICIEMBRE) {
       // --- LÓGICA DE ABONOS (Diciembre) ---
-      const totalPagadoYa = pagosExistentes.reduce((sum, pago) => sum + pago.monto, 0);
+      const totalPagadoYa = pagosExistentes.reduce((sum, pago) => sum + Number(pago.monto), 0);
       const saldoReal = precioMensual - totalPagadoYa;
 
       // (con margen de 0.01 para errores de flotante)
-      if (monto > (saldoReal + 0.01)) {
+      if (Number(monto) > (saldoReal + 0.01)) {
         throw new BadRequestException( // Error 400
           `El monto C$ ${monto} excede el saldo pendiente real de C$ ${saldoReal.toFixed(2)}`
         );
@@ -63,7 +74,7 @@ export class PagosService {
       }
       
       // Opcional: Validar que el monto sea el completo
-      if (Math.abs(monto - precioMensual) > 0.01) {
+      if (Math.abs(Number(monto) - Number(precioMensual)) > 0.01) {
          throw new BadRequestException(
           `El monto C$ ${monto} no coincide con la mensualidad de C$ ${precioMensual.toFixed(2)} para este mes.`
         );
@@ -71,13 +82,21 @@ export class PagosService {
     }
     // --- FIN DE LA VALIDACIÓN ---
 
-    // 4. Si pasa la validación, se guarda.
+    // 4. Guardar Pago
     const newPago = this.pagosRepository.create(createPagoDto);
-    return this.pagosRepository.save(newPago);
+    const resultado = await this.pagosRepository.save(newPago);
+
+    // 🔔 MAGIA 1: Notificar a los Propietarios
+    this.notificarAdmins('💰 Pago Recibido', `Pago de C$ ${resultado.monto} recibido de ${resultado.alumnoNombre} (${mes}).`);
+
+    // ⚡ MAGIA 2: Actualizar Dashboard en Tiempo Real
+    this.eventsGateway.emitir('nuevo-pago', resultado);
+
+    return resultado;
   }
 
   // --- PAGO EN LOTE (BATCH) ---
-  // (Esta función ya tenía la validación correcta y no necesita cambios)
+  // TU LÓGICA ORIGINAL + NOTIFICACIONES
   async createBatch(createPagoBatchDto: CreatePagoBatchDto): Promise<Pago[]> {
     const { alumnoId, alumnoNombre, montoPorMes, meses, fecha } = createPagoBatchDto;
 
@@ -92,29 +111,37 @@ export class PagosService {
     const mesesAGuardar = meses.filter(mes => !mesesYaPagados.has(mes));
     
     if (mesesAGuardar.length === 0) {
-      // El frontend intentó pagar meses que ya estaban en la BD.
-      // Devolvemos un array vacío y no hacemos nada.
       return []; 
     }
 
-    const pagosAGuardar: Partial<Pago>[] = mesesAGuardar.map(mes => ({
-      alumnoId: alumnoId,
-      alumnoNombre: alumnoNombre,
-      monto: montoPorMes,
-      mes: mes,
-      fecha: fecha,
-      estado: 'pagado',
-    }));
+    const pagosAGuardar = mesesAGuardar.map(mes => 
+       this.pagosRepository.create({
+            alumnoId: alumnoId,
+            alumnoNombre: alumnoNombre,
+            monto: montoPorMes,
+            mes: mes,
+            fecha: fecha,
+            estado: 'pagado',
+       })
+    );
 
-    const nuevosPagos = this.pagosRepository.create(pagosAGuardar);
-    return this.pagosRepository.save(nuevosPagos);
+    const nuevosPagos = await this.pagosRepository.save(pagosAGuardar);
+    
+    // Calcular total para la notificación
+    const total = nuevosPagos.reduce((sum, p) => sum + Number(p.monto), 0);
+
+    // 🔔 Notificar Batch
+    this.notificarAdmins('💰 Pago Anual/Lote', `Se registraron ${nuevosPagos.length} pagos (Total: C$ ${total}) para ${alumnoNombre}.`);
+
+    // ⚡ Evento en tiempo real
+    this.eventsGateway.emitir('nuevo-pago-lote', { total, cantidad: nuevosPagos.length });
+
+    return nuevosPagos;
   }
-  // --- FIN DEL NUEVO MÉTODO ---
-
 
   // --- LEER TODOS ---
   findAll(): Promise<Pago[]> {
-    return this.pagosRepository.find();
+    return this.pagosRepository.find({ order: { fecha: 'DESC' } });
   }
 
   // --- LEER UNO ---
@@ -128,9 +155,6 @@ export class PagosService {
 
   // --- ACTUALIZAR ---
   async update(id: string, updatePagoDto: UpdatePagoDto): Promise<Pago> {
-    // TODO: La actualización también debería validar el monto
-    // si se está editando un pago. (Fase 2)
-
     const pago = await this.pagosRepository.preload({
       id: id,
       ...updatePagoDto,
@@ -148,7 +172,6 @@ export class PagosService {
   }
 
   // --- NUEVO MÉTODO PARA EL TUTOR ---
-  // Busca todos los pagos de una lista de IDs de alumnos
   async findByAlumnos(alumnoIds: string[]): Promise<Pago[]> {
     if (!alumnoIds || alumnoIds.length === 0) {
       return [];
@@ -156,12 +179,29 @@ export class PagosService {
     
     return this.pagosRepository.find({
       where: { 
-        alumnoId: In(alumnoIds) // Usa el operador 'In' de TypeOrm
+        alumnoId: In(alumnoIds) 
       },
-      relations: ['alumno'], // Incluye la relación con Alumno
+      relations: ['alumno'], 
       order: { 
-        fecha: 'DESC' // Ordenar por fecha descendente
+        fecha: 'DESC' 
       }
     });
+  }
+
+  // --- HELPER PRIVADO PARA NOTIFICAR ---
+  private async notificarAdmins(titulo: string, mensaje: string) {
+      try {
+          const admins = await this.usersRepository.find({ where: { rol: 'propietario' } });
+          for (const admin of admins) {
+              await this.notificacionesService.crear(
+                  admin.id,
+                  titulo,
+                  mensaje,
+                  'pago'
+              );
+          }
+      } catch (e) {
+          console.error("Error enviando notificación:", e);
+      }
   }
 }

@@ -1,12 +1,14 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ReportesService } from './reportes.service';
+import { AuthGuard } from '../supabase/auth.guard';
 
 @Controller('reportes')
+@UseGuards(AuthGuard)
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}
 
   @Get('dashboard')
   getDashboard() {
-    return this.reportesService.getDashboardReportes();
+    return this.reportesService.getDashboardStats();
   }
 }

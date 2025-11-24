@@ -8,6 +8,6 @@ import { Aviso } from './aviso.entity';
   imports: [TypeOrmModule.forFeature([Aviso])],
   controllers: [AvisosController],
   providers: [AvisosService],
-  exports: [TypeOrmModule], // <-- ¡AÑADE ESTA LÍNEA!
+  exports: [AvisosService], // Exportamos el servicio por si otros módulos lo necesitan
 })
 export class AvisosModule {}

@@ -8,7 +8,7 @@ import { Between, Repository } from 'typeorm';
 
 // Entidades
 import { Asistencia } from './asistencia.entity';
-import { User } from '../users/user.entity'; // <--- CAMBIO: Usamos User
+import { User } from '../users/user.entity'; 
 import { Alumno } from '../alumnos/alumno.entity';
 import { Aviso } from '../avisos/aviso.entity';
 import { CreateLoteAsistenciaDto } from './dto/create-lote-asistencia.dto';
@@ -16,6 +16,8 @@ import { CreateLoteAsistenciaDto } from './dto/create-lote-asistencia.dto';
 // Servicios Inyectados
 import { DiasNoLectivosService } from '../dias-no-lectivos/dias-no-lectivos.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
+// 👇 IMPORTACIÓN NUEVA (Para Tiempo Real)
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class AsistenciaService {
@@ -23,7 +25,7 @@ export class AsistenciaService {
     @InjectRepository(Asistencia)
     private asistenciaRepository: Repository<Asistencia>,
     
-    @InjectRepository(User) // <--- Inyectamos Repositorio de User
+    @InjectRepository(User) 
     private userRepository: Repository<User>, 
     
     @InjectRepository(Alumno)
@@ -34,9 +36,11 @@ export class AsistenciaService {
 
     private readonly diasNoLectivosService: DiasNoLectivosService,
     private readonly configuracionService: ConfiguracionService,
+    // 👇 INYECCIÓN DEL GATEWAY
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
-  // --- HELPERS PRIVADOS ---
+  // --- HELPERS PRIVADOS (Sin cambios) ---
 
   private getHoy(): { fecha: Date; fechaString: string; diaSemana: number } {
     const fecha = new Date();
@@ -48,18 +52,11 @@ export class AsistenciaService {
   private async checkEsDiaLectivo(): Promise<{ esDiaLectivo: boolean; motivo: string | null }> {
     const { fechaString, diaSemana } = this.getHoy();
 
-    // 1. Fines de semana
-    if (diaSemana === 0 || diaSemana === 6) {
-      return { esDiaLectivo: false, motivo: 'Fin de semana' };
-    }
+    if (diaSemana === 0 || diaSemana === 6) return { esDiaLectivo: false, motivo: 'Fin de semana' };
 
-    // 2. Días No Lectivos
     const diaNoLectivo = await this.diasNoLectivosService.checkDia(fechaString);
-    if (diaNoLectivo) {
-      return { esDiaLectivo: false, motivo: diaNoLectivo.motivo };
-    }
+    if (diaNoLectivo) return { esDiaLectivo: false, motivo: diaNoLectivo.motivo };
 
-    // 3. Configuración Escolar
     const config = await this.configuracionService.getConfig();
     if (config.inicioAnioEscolar && config.finAnioEscolar) {
       if (fechaString < config.inicioAnioEscolar || fechaString > config.finAnioEscolar) {
@@ -86,19 +83,13 @@ export class AsistenciaService {
     return count > 0;
   }
 
-  // --- CORRECCIÓN CLAVE: BUSCAR PERFIL EN TABLA USERS ---
   private async getAsistenteProfile(userId: string) {
-    // Buscamos en la tabla de USUARIOS, no en Personal
     const user = await this.userRepository.findOne({
         where: { id: userId },
-        relations: ['vehiculo'] // El User tiene la relación con vehiculo
+        relations: ['vehiculo'] 
     });
 
     if (!user) throw new NotFoundException('Usuario no encontrado.');
-    
-    // Validación opcional: asegurar que sea rol asistente
-    // if (user.rol !== 'asistente' && user.rol !== 'propietario') ...
-
     if (!user.vehiculo) throw new NotFoundException('No tienes vehículo asignado en tu perfil.');
     
     return user;
@@ -108,7 +99,7 @@ export class AsistenciaService {
 
   // 1. Resumen para el Asistente
   async getResumenHoy(userId: string) {
-    const asistente = await this.getAsistenteProfile(userId); // Usamos el helper corregido
+    const asistente = await this.getAsistenteProfile(userId);
     
     const { fechaString } = this.getHoy();
     const { esDiaLectivo, motivo } = await this.checkEsDiaLectivo();
@@ -116,7 +107,7 @@ export class AsistenciaService {
     const vehiculo = asistente.vehiculo;
 
     const totalAlumnos = await this.alumnoRepository.count({
-      where: { vehiculo: { id: vehiculo.id }, activo: true }, // Solo activos
+      where: { vehiculo: { id: vehiculo.id }, activo: true },
     });
     
     const presentesHoy = await this.asistenciaRepository.count({
@@ -154,18 +145,14 @@ export class AsistenciaService {
 
   // 2. Lista de Alumnos para marcar
   async getAlumnosParaAsistencia(userId: string) {
-    const { esDiaLectivo, motivo } = await this.checkEsDiaLectivo();
-    // if (!esDiaLectivo) throw new BadRequestException(motivo || 'Hoy no es un día lectivo.');
-
     const asistente = await this.getAsistenteProfile(userId);
     
-    // Filtramos por el vehículo del usuario logueado
     const alumnos = await this.alumnoRepository.find({
       where: { 
           vehiculo: { id: asistente.vehiculo.id },
-          activo: true // Solo alumnos activos
+          activo: true 
       },
-      relations: ['tutorUser'], // Traemos al tutor para mostrar su nombre si es necesario
+      relations: ['tutorUser'], 
       order: { nombre: 'ASC' }
     });
 
@@ -173,12 +160,11 @@ export class AsistenciaService {
       id: a.id,
       nombre: a.nombre,
       grado: a.grado || 'N/A',
-      // Intentamos sacar el nombre del tutor del objeto relacionado o del string legacy
       tutor: a.tutorUser?.nombre || a.tutor || 'N/A', 
     }));
   }
 
-  // 3. Guardar Asistencia
+  // 3. Guardar Asistencia (AHORA CON NOTIFICACIÓN EN VIVO ⚡)
   async registrarLote(loteDto: CreateLoteAsistenciaDto, userId: string) {
     const { esDiaLectivo, motivo } = await this.checkEsDiaLectivo();
     if (!esDiaLectivo) throw new BadRequestException(motivo);
@@ -199,7 +185,21 @@ export class AsistenciaService {
       }),
     );
 
-    return this.asistenciaRepository.save(registros);
+    const resultado = await this.asistenciaRepository.save(registros);
+
+    // ⚡ EVENTO EN TIEMPO REAL ⚡
+    // Esto activa el "Monitor de Ruta" y las notificaciones a los padres.
+    this.eventsGateway.emitir('nueva-asistencia-lote', {
+        vehiculo: asistente.vehiculo.nombre,
+        asistente: asistente.nombre,
+        totalRegistros: resultado.length,
+        detalles: resultado.map(r => ({
+            alumnoId: r.alumno.id, // Importante para filtrar en el frontend del padre
+            estado: r.estado
+        }))
+    });
+
+    return resultado;
   }
 
   // 4. Historial

@@ -5,10 +5,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
-// Módulos
+// Módulos Funcionales
 import { AlumnosModule } from './alumnos/alumnos.module';
 import { AsistenciaModule } from './asistencias/asistencia.module';
-import { UsersModule } from './users/users.module'; // 👈 AQUÍ
+import { UsersModule } from './users/users.module';
 import { PagosModule } from './pagos/pagos.module';
 import { GastosModule } from './gastos/gastos.module';
 import { PersonalModule } from './personal/personal.module';
@@ -20,13 +20,20 @@ import { TutorModule } from './tutor/tutor.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { SolicitudesModule } from './solicitudes/solicitudes.module';
 
-// Supabase
+// Módulos de Notificaciones y Tiempo Real (NUEVOS)
+import { NotificacionesModule } from './notificaciones/notificaciones.module';
+import { EventsModule } from './events/events.module';
+
+// Supabase y Seguridad
 import { SupabaseModule } from './supabase/supabase.module';
 import { AuthGuard } from './supabase/auth.guard'; 
 
 @Module({
   imports: [
+    // 1. Configuración Global
     ConfigModule.forRoot({ isGlobal: true }),
+    
+    // 2. Base de Datos
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -43,9 +50,9 @@ import { AuthGuard } from './supabase/auth.guard';
       }),
     }),
     
-    // Módulos funcionales
+    // 3. Módulos de la Aplicación
     SupabaseModule,
-    UsersModule, // 👈 TIENE QUE ESTAR AQUÍ
+    UsersModule,
     AlumnosModule,
     AsistenciaModule,
     PagosModule,
@@ -58,6 +65,10 @@ import { AuthGuard } from './supabase/auth.guard';
     TutorModule,
     ReportesModule,
     SolicitudesModule,
+    
+    // 4. Nuevos Módulos de Notificaciones
+    NotificacionesModule, // 👈 Para guardar historial de campanas
+    EventsModule,         // 👈 Para WebSockets en tiempo real
   ],
   controllers: [AppController],
   providers: [

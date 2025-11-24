@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Pago } from '../pagos/pago.entity';
 import { Gasto } from '../gastos/gasto.entity';
-import { Asistencia } from '../asistencias/asistencia.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
 
@@ -12,77 +11,118 @@ export class ReportesService {
   constructor(
     @InjectRepository(Pago) private pagoRepo: Repository<Pago>,
     @InjectRepository(Gasto) private gastoRepo: Repository<Gasto>,
-    @InjectRepository(Asistencia) private asistenciaRepo: Repository<Asistencia>,
     @InjectRepository(Alumno) private alumnoRepo: Repository<Alumno>,
     @InjectRepository(Vehiculo) private vehiculoRepo: Repository<Vehiculo>,
   ) {}
 
-  async getDashboardReportes() {
-    // --- 1. FINANZAS POR MES (Últimos 6 meses) ---
-    const pagos = await this.pagoRepo.find({ order: { fechaRegistro: 'DESC' }, take: 100 }); 
-    const gastos = await this.gastoRepo.find({ order: { fecha: 'DESC' }, take: 100 });
-    
-    // Agrupar y sumar por mes (simplificado en JS para no complicar con SQL nativo por ahora)
-    const finanzasMap = new Map();
+  async getDashboardStats() {
+    // 1. DATOS DE ALUMNOS (KPI: Alumnos Activos)
+    // Contamos cuántos están marcados como activos en la BD
+    const alumnosActivos = await this.alumnoRepo.count({ where: { activo: true } });
 
-    const procesar = (lista: any[], tipo: 'ingreso' | 'gasto') => {
-        lista.forEach(item => {
-            // Usa la fecha real o la fecha de registro
-            const fecha = item.fecha ? new Date(item.fecha) : item.fechaRegistro;
-            if(!fecha) return;
-            
-            const mesStr = fecha.toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }); // "Nov 25"
-            
-            if (!finanzasMap.has(mesStr)) {
-                finanzasMap.set(mesStr, { mes: mesStr, ingreso: 0, gasto: 0 });
+    // 2. DATOS FINANCIEROS (KPIs: Ingresos, Gastos, Utilidad)
+    const ingresosRaw = await this.pagoRepo.find({ where: { estado: 'pagado' } });
+    const gastosRaw = await this.gastoRepo.find();
+
+    const ingresosTotales = ingresosRaw.reduce((sum, p) => sum + Number(p.monto), 0);
+    const gastosTotales = gastosRaw.reduce((sum, g) => sum + Number(g.monto), 0);
+    const beneficioNeto = ingresosTotales - gastosTotales;
+
+    // 3. GRÁFICA: FINANZAS POR MES
+    const mesesNombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const mesesMap = new Map<string, { ingreso: number; gasto: number }>();
+    
+    // Inicializar mapa
+    mesesNombres.forEach(m => mesesMap.set(m, { ingreso: 0, gasto: 0 }));
+
+    // Llenar Ingresos
+    ingresosRaw.forEach(p => {
+        const mesNombre = p.mes.split(' ')[0]; // "Febrero 2024" -> "Febrero"
+        if (mesesMap.has(mesNombre)) {
+            mesesMap.get(mesNombre)!.ingreso += Number(p.monto);
+        }
+    });
+
+    // Llenar Gastos
+    gastosRaw.forEach(g => {
+        // Asumiendo fecha YYYY-MM-DD
+        const fecha = new Date(g.fecha); 
+        if (!isNaN(fecha.getTime())) {
+            const mesNombre = mesesNombres[fecha.getMonth()];
+            if (mesesMap.has(mesNombre)) {
+                mesesMap.get(mesNombre)!.gasto += Number(g.monto);
             }
+        }
+    });
+
+    const finanzasPorMes = Array.from(mesesMap.entries()).map(([mes, data]) => ({
+        mes,
+        ingreso: data.ingreso,
+        gasto: data.gasto
+    }));
+
+    // 4. GRÁFICA: RENTABILIDAD POR VEHÍCULO
+    const vehiculos = await this.vehiculoRepo.find();
+    // Necesitamos pagos con la relación del alumno para saber su vehículo
+    const pagosConRelacion = await this.pagoRepo.find({
+        relations: ['alumno', 'alumno.vehiculo'],
+        where: { estado: 'pagado' }
+    });
+
+    const finanzasPorVehiculo = vehiculos.map(v => {
+        // Sumamos pagos de alumnos que pertenecen a este vehículo
+        const ingresos = pagosConRelacion
+            .filter(p => p.alumno?.vehiculo?.id === v.id)
+            .reduce((sum, p) => sum + Number(p.monto), 0);
             
-            const entry = finanzasMap.get(mesStr);
-            if (tipo === 'ingreso') entry.ingreso += Number(item.monto);
-            if (tipo === 'gasto') entry.gasto += Number(item.monto);
-        });
-    };
+        // Sumamos gastos asignados a este vehículo
+        const gastos = gastosRaw
+            .filter(g => g.vehiculoId === v.id)
+            .reduce((sum, g) => sum + Number(g.monto), 0);
 
-    procesar(pagos, 'ingreso');
-    procesar(gastos, 'gasto');
+        return {
+            nombre: v.nombre,
+            ingresos,
+            gastos
+        };
+    });
+
+    // 5. GRÁFICA: ALUMNOS POR GRADO
+    const todosAlumnos = await this.alumnoRepo.find({ where: { activo: true } });
+    const gradosMap = new Map<string, number>();
     
-    const finanzasPorMes = Array.from(finanzasMap.values()).reverse(); // Orden cronológico
+    todosAlumnos.forEach(a => {
+        const grado = a.grado || "Sin Grado";
+        gradosMap.set(grado, (gradosMap.get(grado) || 0) + 1);
+    });
 
+    const alumnosPorGrado = Array.from(gradosMap.entries()).map(([grado, cantidad]) => ({
+        grado,
+        alumnos: cantidad
+    }));
 
-    // --- 2. ESTADO DE PAGOS (Global) ---
-    const totalPagado = pagos.filter(p => p.estado === 'pagado').length;
-    const totalPendiente = pagos.filter(p => p.estado === 'pendiente').length;
+    // 6. ESTADO DE PAGOS (Para la Dona)
+    const totalPagado = ingresosRaw.length; 
+    const totalPendiente = await this.pagoRepo.count({ where: { estado: 'pendiente' } }); 
+    // Nota: Lo ideal sería calcular deuda real, pero por ahora usamos conteo de registros
+    
     const estadoPagos = [
         { nombre: "Pagados", valor: totalPagado, color: "#10b981" },
         { nombre: "Pendientes", valor: totalPendiente, color: "#f59e0b" }
     ];
 
-
-    // --- 3. ALUMNOS POR GRADO ---
-    const alumnos = await this.alumnoRepo.find();
-    const gradosMap = new Map();
-    alumnos.forEach(a => {
-        const grado = a.grado || "Sin Grado";
-        gradosMap.set(grado, (gradosMap.get(grado) || 0) + 1);
-    });
-    const alumnosPorGrado = Array.from(gradosMap.entries()).map(([grado, cantidad]) => ({
-        grado, alumnos: cantidad
-    }));
-
-    // --- 4. KPI TOTALES ---
-    const ingresosTotales = pagos.reduce((sum, p) => sum + Number(p.monto), 0);
-    const gastosTotales = gastos.reduce((sum, g) => sum + Number(g.monto), 0);
-
-
+    // RETORNO FINAL
     return {
-        finanzasPorMes, // Para el gráfico de barras principal
-        estadoPagos,    // Para la dona
-        alumnosPorGrado, // Para el gráfico vertical
         kpi: {
+            alumnosActivos, // ¡Esto arregla el 0!
             ingresosTotales,
             gastosTotales,
-            beneficioNeto: ingresosTotales - gastosTotales
-        }
+            beneficioNeto
+        },
+        finanzasPorMes,
+        finanzasPorVehiculo, // ¡Esto arregla la gráfica vacía!
+        alumnosPorGrado,
+        estadoPagos
     };
   }
 }

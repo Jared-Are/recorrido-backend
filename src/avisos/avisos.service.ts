@@ -19,9 +19,7 @@ export class AvisosService {
 
   findAll() {
     return this.avisoRepository.find({
-      order: {
-        fechaCreacion: 'DESC',
-      },
+      order: { fechaCreacion: 'DESC' },
     });
   }
 
@@ -45,7 +43,8 @@ export class AvisosService {
     return { message: 'Aviso eliminado correctamente' };
   }
 
-  // --- CORRECCIÓN AQUÍ ---
+  // --- MÉTODOS ESPECÍFICOS ---
+
   findAllParaAsistente() {
     return this.avisoRepository.find({
       where: [
@@ -54,7 +53,7 @@ export class AvisosService {
       ],
       order: { fechaCreacion: 'DESC' },
     });
-  } // <--- TE FALTABA ESTA LLAVE DE CIERRE
+  }
 
   findAllParaTutor() {
     return this.avisoRepository.find({
