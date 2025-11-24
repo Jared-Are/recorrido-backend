@@ -2,128 +2,121 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alumno } from './alumno.entity';
-import { User, UserStatus, UserRole } from '../users/user.entity'; 
-import { CreateAlumnoDto } from './dto/create-alumno.dto';
-import { UpdateAlumnoDto } from './dto/update-alumno.dto';
+import { User } from '../users/user.entity';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AlumnosService {
   constructor(
     @InjectRepository(Alumno)
     private alumnosRepository: Repository<Alumno>,
-
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private usersService: UsersService, // Inyectamos el servicio experto en usuarios
   ) {}
 
-  // --- CREAR ALUMNO ---
-  async create(createAlumnoDto: CreateAlumnoDto): Promise<Alumno> {
-    const { tutor: datosTutor, ...datosAlumno } = createAlumnoDto;
+  // --- CREAR ALUMNO CON ASIGNACIÓN INTELIGENTE ---
+  async create(data: any, creatorId: string) {
+    let tutorId = creatorId; // Por defecto, el tutor es quien crea (si es un padre)
 
-    const telefonoTutor = datosTutor.telefono?.trim() || undefined;
-    const emailTutor = (datosTutor as any).email?.trim() || undefined; 
+    // Si el que registra es Admin/Propietario, vendrán datos del tutor en 'data.tutor'
+    if (data.tutor && data.tutor.telefono) {
+        const telefonoTutor = data.tutor.telefono.trim();
+        const nombreTutor = data.tutor.nombre?.trim() || "Tutor sin nombre";
 
-    if (!telefonoTutor) {
-       throw new BadRequestException("El teléfono del tutor es obligatorio");
-    }
-
-    // 1. Buscar si el tutor ya existe
-    let usuarioTutor = await this.usersRepository.findOne({ 
-      where: { telefono: telefonoTutor } 
-    });
-
-    // 2. Validación de Email (si aplica)
-    if (!usuarioTutor && emailTutor) {
-        const existeEmail = await this.usersRepository.findOne({ where: { email: emailTutor } });
-        if (existeEmail) {
-            throw new BadRequestException(`El correo ${emailTutor} ya está registrado.`);
-        }
-    }
-
-    // 3. Crear usuario si no existe
-    if (!usuarioTutor) {
-      try {
-        const baseName = datosTutor.nombre.trim().toLowerCase().replace(/\s+/g, '.');
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-        const usernameGen = `${baseName}${randomSuffix}`;
-
-        usuarioTutor = this.usersRepository.create({
-          nombre: datosTutor.nombre,
-          telefono: telefonoTutor,
-          email: emailTutor,
-          username: usernameGen,
-          rol: UserRole.TUTOR,
-          estatus: UserStatus.INVITADO,
-          contrasena: undefined, 
+        // 1. BÚSQUEDA: ¿Ya existe este tutor por teléfono?
+        let padreEncontrado = await this.usersRepository.findOne({ 
+            where: { telefono: telefonoTutor } 
         });
-        await this.usersRepository.save(usuarioTutor);
-      } catch (error: any) {
-        console.error("Error BD creando tutor:", error);
-        if (error.code === '23505') { 
-             throw new BadRequestException("Error: El teléfono ya existe en otro usuario.");
+
+        if (padreEncontrado) {
+            // 2a. SI EXISTE: Usamos su ID. ¡Aquí evitamos duplicados!
+            console.log(`✅ Tutor existente encontrado: ${padreEncontrado.nombre} (${padreEncontrado.id})`);
+            tutorId = padreEncontrado.id;
+        } else {
+            // 2b. NO EXISTE: Lo creamos usando UsersService (que maneja Supabase y todo)
+            console.log(`🆕 Creando nuevo Tutor para: ${nombreTutor}`);
+            try {
+                const nuevoPadre = await this.usersService.create({
+                    nombre: nombreTutor,
+                    telefono: telefonoTutor,
+                    rol: 'tutor', // Forzamos rol tutor
+                    // UsersService generará username, password temporal y auth_id automáticamente
+                });
+                tutorId = nuevoPadre.id;
+            } catch (error) {
+                console.error("Error al crear tutor automático:", error);
+                // Si falla (ej. teléfono inválido), lanzamos error claro
+                throw new BadRequestException("No se pudo registrar al tutor automáticamente. Verifica el teléfono.");
+            }
         }
-        throw new BadRequestException("No se pudo registrar el tutor.");
-      }
     }
 
-    // 4. Crear Alumno
-    const newAlumno = this.alumnosRepository.create({
-      ...datosAlumno,
-      tutor: datosTutor.nombre, 
-      tutorUser: usuarioTutor,
-      // CORRECCIÓN CLAVE: Guardamos el teléfono también en la columna 'contacto' del alumno
-      contacto: telefonoTutor, 
-      activo: true,
+    // 3. ASIGNACIÓN: Creamos el alumno vinculado al ID del tutor (viejo o nuevo)
+    // Desestructuramos para sacar 'tutor' del objeto, ya que no es columna directa en Alumno
+    const { tutor, ...datosAlumno } = data;
+
+    const nuevoAlumno = this.alumnosRepository.create({
+        ...datosAlumno,
+        tutor: typeof tutor === 'object' ? tutor.nombre : tutor, // Guardamos nombre texto por compatibilidad
+        contacto: typeof tutor === 'object' ? tutor.telefono : '', // Guardamos contacto texto por compatibilidad
+        tutorUserId: tutorId, // 🔗 LA RELACIÓN IMPORTANTE (Foreign Key)
+        activo: true
     });
 
-    return this.alumnosRepository.save(newAlumno);
+    return await this.alumnosRepository.save(nuevoAlumno);
   }
 
-  // --- LEER TODOS ---
-  findAll(): Promise<Alumno[]> {
-    return this.alumnosRepository.find({
-      where: { activo: true },
-      order: { nombre: 'ASC' },
-      // Importante: Traemos 'tutorUser' para leer los datos frescos del usuario
-      relations: ['vehiculo', 'tutorUser'], 
-    });
+  // --- 👑 BUSCAR TODOS (Para Admin/Propietario) ---
+  async findAll(estado?: string) {
+    const query = this.alumnosRepository.createQueryBuilder('alumno')
+        .leftJoinAndSelect('alumno.tutorUser', 'tutor') // Datos del usuario tutor
+        .leftJoinAndSelect('alumno.vehiculo', 'vehiculo')
+        .orderBy('alumno.nombre', 'ASC');
+
+    if (estado === 'activo') {
+        query.andWhere('alumno.activo = :activo', { activo: true });
+    } else if (estado === 'inactivo') {
+        query.andWhere('alumno.activo = :activo', { activo: false });
+    }
+
+    return await query.getMany();
   }
 
-  findAllByEstado(activo: boolean): Promise<Alumno[]> {
-    return this.alumnosRepository.find({
-      where: { activo: activo },
-      order: { nombre: 'ASC' },
-      relations: ['vehiculo', 'tutorUser'],
-    });
+  // --- 👨‍👩‍👧‍👦 BUSCAR POR TUTOR (Para el Dashboard del Padre) ---
+  async findByTutor(userId: string, estado?: string) {
+    const query = this.alumnosRepository.createQueryBuilder('alumno')
+        .leftJoinAndSelect('alumno.tutorUser', 'tutor')
+        .leftJoinAndSelect('alumno.vehiculo', 'vehiculo')
+        .where('alumno.tutorUserId = :userId', { userId }) // 🔒 Solo sus hijos
+        .orderBy('alumno.nombre', 'ASC');
+
+    if (estado === 'activo') {
+        query.andWhere('alumno.activo = :activo', { activo: true });
+    } else if (estado === 'inactivo') {
+        query.andWhere('alumno.activo = :activo', { activo: false });
+    }
+
+    return await query.getMany();
   }
 
-  async findOne(id: string): Promise<Alumno> {
+  async findOne(id: string) {
     const alumno = await this.alumnosRepository.findOne({
         where: { id },
-        relations: ['vehiculo', 'tutorUser']
+        relations: ['tutorUser', 'vehiculo']
     });
-    if (!alumno) throw new NotFoundException(`Alumno con id ${id} no encontrado`);
+    if (!alumno) throw new NotFoundException(`Alumno con ID ${id} no encontrado`);
     return alumno;
   }
 
-  async update(id: string, updateAlumnoDto: UpdateAlumnoDto): Promise<Alumno> {
-    const { tutor, ...datosSimples } = updateAlumnoDto;
-    const alumno = await this.alumnosRepository.preload({
-      id: id,
-      ...datosSimples,
-    });
-    if (!alumno) throw new NotFoundException(`Alumno no encontrado`);
-
-    if (tutor) {
-        alumno.tutor = tutor.nombre;
-        // Opcional: Actualizar también 'contacto' si cambió el tutor
-        if (tutor.telefono) alumno.contacto = tutor.telefono;
-    }
-    return this.alumnosRepository.save(alumno);
+  async update(id: string, changes: any) {
+    const alumno = await this.findOne(id);
+    this.alumnosRepository.merge(alumno, changes);
+    return await this.alumnosRepository.save(alumno);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string) {
     const alumno = await this.findOne(id);
-    await this.alumnosRepository.remove(alumno);
+    return await this.alumnosRepository.remove(alumno);
   }
 }

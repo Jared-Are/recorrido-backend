@@ -1,48 +1,49 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, HttpCode, Query } from '@nestjs/common';
-// ... (tus otros imports)
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query } from '@nestjs/common';
 import { AlumnosService } from './alumnos.service';
-import { CreateAlumnoDto } from './dto/create-alumno.dto';
-import { UpdateAlumnoDto } from './dto/update-alumno.dto';
+import { AuthGuard } from '../supabase/auth.guard';
 
 @Controller('alumnos')
+@UseGuards(AuthGuard) // 🔒 Protegido: Solo usuarios logueados
 export class AlumnosController {
   constructor(private readonly alumnosService: AlumnosService) {}
 
   @Post()
-  create(@Body() createAlumnoDto: CreateAlumnoDto) {
-    return this.alumnosService.create(createAlumnoDto);
+  create(@Body() createAlumnoDto: any, @Request() req: any) {
+    // CORRECCIÓN DEL ERROR 1: Ahora pasamos 2 argumentos (datos + ID del creador)
+    return this.alumnosService.create(createAlumnoDto, req.user.id);
   }
 
-  // --- ¡AQUÍ ESTÁ EL CAMBIO! ---
   @Get()
-  findAll(@Query('estado') estado: string) {
-    // Si el frontend envía ?estado=activo o ?estado=inactivo, usamos el filtro
-    if (estado === 'activo' || estado === 'inactivo') {
-      const activo = estado === 'activo'; // Convertir a booleano
-      return this.alumnosService.findAllByEstado(activo);
+  findAll(@Request() req: any, @Query('estado') estado?: string) {
+    const user = req.user;
+    const rol = user.user_metadata?.rol?.toLowerCase();
+    
+    console.log(`🔎 Consultando alumnos. Usuario: ${user.email}, Rol: ${rol}, Estado: ${estado}`);
+
+    // CORRECCIÓN DEL ERROR 2: Usamos findAll o findByTutor
+    
+    // 👑 MODO OPERATIVO: Propietario, Admin y ASISTENTE ven TODO
+    // El asistente necesita ver todos los alumnos para poder registrar asistencias en cualquier ruta
+    if (rol === 'propietario' || rol === 'admin' || rol === 'asistente') {
+        return this.alumnosService.findAll(estado);
     }
-    // Si no, devolvemos todo (o el comportamiento por defecto que tuvieras)
-    return this.alumnosService.findAll();
+
+    // 👨‍👩‍👧‍👦 MODO TUTOR: Solo ve a sus hijos
+    return this.alumnosService.findByTutor(user.id, estado);
   }
-  // --- FIN DEL CAMBIO ---
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id') id: string) {
     return this.alumnosService.findOne(id);
   }
 
   @Patch(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string, 
-    @Body() updateAlumnoDto: UpdateAlumnoDto
-  ) {
+  update(@Param('id') id: string, @Body() updateAlumnoDto: any) {
     return this.alumnosService.update(id, updateAlumnoDto);
   }
 
   @Delete(':id')
-  @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    // Esto es borrado FÍSICO. El borrado lógico se hace con PATCH.
+  remove(@Param('id') id: string) {
     return this.alumnosService.remove(id);
   }
 }
