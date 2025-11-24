@@ -21,6 +21,21 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
+  // --- ACTUALIZAR USUARIO (Para editar Tutor/Personal) ---
+  async update(id: string, changes: Partial<User>) {
+    const user = await this.findOne(id);
+    if (!user) throw new NotFoundException("Usuario no encontrado");
+
+    // Si cambia el teléfono, verificamos que no esté repetido en otro usuario
+    if (changes.telefono && changes.telefono !== user.telefono) {
+        const existe = await this.usersRepository.findOneBy({ telefono: changes.telefono });
+        if (existe) throw new BadRequestException("Ese teléfono ya está en uso por otro usuario.");
+    }
+
+    this.usersRepository.merge(user, changes);
+    return await this.usersRepository.save(user);
+  }
+
   // --- LOOKUP (Paso 1 del Login) ---
   async lookupUser(identifier: string) {
     const user = await this.usersRepository.findOne({
@@ -38,17 +53,22 @@ export class UsersService {
     };
   }
 
-  // --- CREAR USUARIO (Modificado para aceptar vehiculoId) ---
+  // --- CREAR USUARIO (Soporta creación desde Alumnos y Personal) ---
   async create(datos: Partial<User>) {
     try {
       const telefonoLimpio = datos.telefono?.trim();
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
+      // Verificamos si ya existe (aunque PersonalService ya lo valida, es doble seguridad)
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
-      if (existe) throw new BadRequestException(`Ya existe un usuario con el teléfono ${telefonoLimpio}`);
+      if (existe) {
+          // Si ya existe, retornamos el existente para no fallar (caso re-contratación o tutor que se vuelve empleado)
+          return existe; 
+      }
 
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
+        // Generar username base: juan.perez + 4 digitos
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
         const random = Math.floor(1000 + Math.random() * 9000);
         usernameFinal = `${base}${random}`;
@@ -58,6 +78,7 @@ export class UsersService {
       const passwordTemporal = `Temp${Math.random().toString(36).slice(-8)}`; 
       let authUserId: string = crypto.randomUUID(); 
       
+      // 1. Crear en Supabase Auth
       try {
           const { data: authUser } = await this.supabaseService.admin.createUser({
             email: emailFantasma,
@@ -70,8 +91,9 @@ export class UsersService {
           console.error("Supabase create warning:", e.message); 
       }
 
+      // 2. Guardar en Base de Datos Local
       const nuevoUsuario = this.usersRepository.create({
-        ...datos, // 👈 AQUÍ ES DONDE SE PASA vehiculoId SI VIENE EN LOS DATOS
+        ...datos, // Aquí entra vehiculoId si viene del PersonalService
         id: authUserId, 
         username: usernameFinal,
         telefono: telefonoLimpio,
@@ -90,7 +112,7 @@ export class UsersService {
     }
   }
 
-  // --- GENERAR INVITACIÓN ---
+  // --- GENERAR INVITACIÓN (Link de WhatsApp) ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('Usuario no encontrado');
@@ -98,6 +120,7 @@ export class UsersService {
     const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
     user.invitationToken = token;
     
+    // Asegurar username si falta
     if (!user.username) {
        const nombreBase = user.nombre ? user.nombre : 'usuario';
        const base = nombreBase.trim().toLowerCase().replace(/\s+/g, '.');
@@ -107,16 +130,25 @@ export class UsersService {
     await this.usersRepository.save(user);
 
     // Usamos variable de entorno o fallback a Vercel
-    const frontendUrl = process.env.FRONTEND_URL || 'https://recorrido-lac.vercel.app';
+    let frontendUrl = process.env.FRONTEND_URL || 'https://recorrido-lac.vercel.app';
+    
+    // Asegurar https://
+    if (!frontendUrl.startsWith('http')) {
+        frontendUrl = `https://${frontendUrl}`;
+    }
+    // Quitar barra final si existe
+    if (frontendUrl.endsWith('/')) {
+        frontendUrl = frontendUrl.slice(0, -1);
+    }
     
     const linkActivacion = `${frontendUrl}/activar?token=${token}`;
     
-    const mensaje = `Hola ${user.nombre}, bienvenido.\n\n👤 Tu Usuario: *${user.username}*\n🔐 Crea tu contraseña aquí: ${linkActivacion}`;
+    const mensaje = `Hola ${user.nombre}, bienvenido.\n\n👤 Tu Usuario: *${user.username}*\n🔐 Crea tu contraseña aquí:\n${linkActivacion}`;
 
     return { link: linkActivacion, telefono: user.telefono, mensaje };
   }
 
-  // --- ACTIVAR CUENTA ---
+  // --- ACTIVAR CUENTA (Establecer Password) ---
   async activarCuenta(token: string, contrasena: string) {
     const user = await this.usersRepository.findOneBy({ invitationToken: token });
     if (!user) throw new NotFoundException("Link inválido o expirado.");
@@ -126,7 +158,7 @@ export class UsersService {
     } catch(e) { console.error("Error al sincronizar password con Supabase"); }
 
     user.estatus = UserStatus.ACTIVO;
-    user.invitationToken = null as any;
+    user.invitationToken = null as any; // Quemamos el token para que no se use de nuevo
 
     return await this.usersRepository.save(user);
   }
@@ -163,55 +195,8 @@ export class UsersService {
     };
   }
 
-  // --- ADMIN SEED (Interno) ---
+  // --- ADMIN SEED (Deshabilitado en producción) ---
   async createAdminSeed() {
-    const emailAdmin = "admin@recorrido.app";
-    const passAdmin = "123456";
-    let supabaseId: string | null = null;
-
-    try {
-        const { data, error } = await this.supabaseService.admin.createUser({
-            email: emailAdmin,
-            password: passAdmin,
-            email_confirm: true,
-            user_metadata: { rol: 'propietario' }
-        });
-
-        if (data.user) supabaseId = data.user.id;
-        else if (error) {
-             const { data: loginData } = await this.supabaseService.client.auth.signInWithPassword({
-                email: emailAdmin,
-                password: passAdmin
-            });
-            if (loginData.user) supabaseId = loginData.user.id;
-        }
-    } catch (e) { console.error("Error interno en seed:", e.message); }
-
-    if (!supabaseId) return { message: "❌ Error: No conectó con Supabase." };
-
-    let adminLocal = await this.usersRepository.findOneBy({ username: 'admin' });
-    
-    if (!adminLocal) {
-        adminLocal = await this.usersRepository.findOne({ where: { rol: 'propietario' } });
-    }
-    
-    if (adminLocal) {
-        if (adminLocal.id !== supabaseId) {
-            await this.usersRepository.delete(adminLocal.id);
-            const nuevoAdmin = this.usersRepository.create({ ...adminLocal, id: supabaseId, username: 'admin', email: emailAdmin, estatus: UserStatus.ACTIVO });
-            await this.usersRepository.save(nuevoAdmin);
-            return { message: "✅ Admin REPARADO y SINCRONIZADO." };
-        } else {
-            adminLocal.username = 'admin';
-            adminLocal.email = emailAdmin;
-            adminLocal.estatus = UserStatus.ACTIVO;
-            await this.usersRepository.save(adminLocal);
-            return { message: "✅ Admin actualizado correctamente." };
-        }
-    } else {
-        const nuevoAdmin = this.usersRepository.create({ id: supabaseId, nombre: "Super Admin", username: "admin", telefono: "00000000", email: emailAdmin, rol: 'propietario', estatus: UserStatus.ACTIVO });
-        await this.usersRepository.save(nuevoAdmin);
-        return { message: "✅ Admin CREADO: admin / 123456" };
-    }
+    return { message: "Función deshabilitada por seguridad en producción" };
   }
 }
