@@ -4,7 +4,7 @@ import { Repository, Not } from 'typeorm';
 import { Personal } from './personal.entity';
 import { CreatePersonalDto } from './dto/create-personal.dto';
 import { UpdatePersonalDto } from './dto/update-personal.dto';
-import { User, UserRole, UserStatus } from '../users/user.entity';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class PersonalService {
@@ -12,8 +12,7 @@ export class PersonalService {
     @InjectRepository(Personal)
     private personalRepository: Repository<Personal>,
     
-    @InjectRepository(User) 
-    private userRepository: Repository<User>,
+    private usersService: UsersService,
   ) {}
 
   // --- LEER TODOS ---
@@ -41,43 +40,47 @@ export class PersonalService {
     return personal;
   }
 
-  // --- CREAR (Con Usuario Automático) ---
+  // --- CREAR (Con Usuario Automático Vía UsersService) ---
   async create(createPersonalDto: CreatePersonalDto): Promise<Personal> {
     const datos = createPersonalDto as any;
 
     // 1. Validaciones previas
     if (!datos.telefono) throw new BadRequestException("El teléfono es obligatorio.");
 
-    // 2. Verificar si ya existe un usuario con ese teléfono
-    const existeUser = await this.userRepository.findOne({ where: { telefono: datos.telefono } });
-    if (existeUser) throw new BadRequestException("Ya existe un usuario registrado con este teléfono.");
+    // 2. Verificar si ya existe PERSONAL con ese teléfono
+    // CORRECCIÓN: Usamos 'contacto' en lugar de 'telefono' porque así se llama en tu entidad Personal
+    const existePersonal = await this.personalRepository.findOne({ where: { contacto: datos.telefono } });
+    if (existePersonal) throw new BadRequestException("Ya existe un empleado registrado con este teléfono.");
 
-    // 3. Generar Username automático (ej. carlos.perez123)
-    const baseName = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.');
-    const randomSuffix = Math.floor(Math.random() * 1000);
-    const usernameGen = `${baseName}${randomSuffix}`;
+    // CORRECCIÓN: Inicializamos como undefined (o string) en lugar de null para satisfacer a TypeORM
+    let userId: string | undefined;
 
-    // 4. Crear Usuario (Login) para que pueda entrar a la App
-    // Si el puesto es 'Chofer', quizás le damos rol TUTOR o ASISTENTE según tu lógica de negocio.
-    // Aquí asumimos ASISTENTE para que tenga acceso, o ajusta según necesites.
-    const rolUsuario = datos.puesto.toLowerCase() === 'chofer' ? UserRole.ASISTENTE : UserRole.ASISTENTE;
+    // 3. Crear Usuario de Sistema (Login)
+    try {
+        console.log(`👤 Creando usuario de sistema para personal: ${datos.nombre}`);
+        
+        const rolAsignado = datos.puesto.toLowerCase() === 'chofer' ? 'chofer' : 'asistente';
 
-    const nuevoUsuario = this.userRepository.create({
-        nombre: datos.nombre,
-        telefono: datos.telefono,
-        username: usernameGen,
-        rol: rolUsuario, 
-        estatus: UserStatus.INVITADO,
-        contrasena: undefined
-    });
+        const nuevoUsuario = await this.usersService.create({
+            nombre: datos.nombre,
+            telefono: datos.telefono,
+            rol: rolAsignado, 
+        });
+        
+        userId = nuevoUsuario.id;
+
+    } catch (error: any) {
+        console.error("Error creando usuario para personal:", error.message);
+        if (error.status !== 400) { 
+             throw new BadRequestException("No se pudo crear el usuario de acceso. Verifica el teléfono.");
+        }
+    }
     
-    const usuarioGuardado = await this.userRepository.save(nuevoUsuario);
-
-    // 5. Crear Registro de Personal vinculado al Usuario
+    // 4. Crear Registro de Personal vinculado al Usuario
     const newPersonal = this.personalRepository.create({
       ...createPersonalDto,
-      contacto: datos.telefono, // Guardamos el teléfono en el campo contacto
-      userId: usuarioGuardado.id,
+      contacto: datos.telefono, 
+      userId: userId, // Ahora el tipo es correcto (string | undefined)
       estado: 'activo',
     });
 
@@ -109,12 +112,9 @@ export class PersonalService {
   async remove(id: string): Promise<void> {
     const personal = await this.personalRepository.findOne({ where: { id } });
     if (!personal) throw new NotFoundException('Personal no encontrado');
-
-    // Opcional: Borrar también el usuario de login asociado
-    if(personal.userId) {
-        await this.userRepository.delete(personal.userId);
-    }
     
-    await this.personalRepository.remove(personal);
+    // Borrado lógico
+    personal.estado = 'eliminado';
+    await this.personalRepository.save(personal);
   }
 }

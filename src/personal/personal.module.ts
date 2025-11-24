@@ -4,15 +4,16 @@ import { PersonalService } from './personal.service';
 import { PersonalController } from './personal.controller';
 import { Personal } from './personal.entity';
 import { VehiculosModule } from '../vehiculos/vehiculos.module';
-import { User } from 'src/users/user.entity';
+import { UsersModule } from '../users/users.module'; // 👈 IMPORTANTE
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Personal, User]),
-    VehiculosModule 
+    TypeOrmModule.forFeature([Personal]),
+    VehiculosModule,
+    UsersModule // 👈 Necesario para usar UsersService
   ], 
   controllers: [PersonalController],
   providers: [PersonalService],
-  exports: [TypeOrmModule] // Exportamos para que GastosModule pueda usarlo
+  exports: [TypeOrmModule] 
 })
 export class PersonalModule {}
