@@ -1,15 +1,15 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Request, Query, UnauthorizedException } from '@nestjs/common';
 import { AlumnosService } from './alumnos.service';
 import { AuthGuard } from '../supabase/auth.guard';
+import { Public } from '../common/public.decorator';
 
 @Controller('alumnos')
-@UseGuards(AuthGuard) // 🔒 Protegido: Solo usuarios logueados
+// Nota: Usamos la protección AuthGuard global en app.module.ts
 export class AlumnosController {
   constructor(private readonly alumnosService: AlumnosService) {}
 
   @Post()
   create(@Body() createAlumnoDto: any, @Request() req: any) {
-    // CORRECCIÓN DEL ERROR 1: Ahora pasamos 2 argumentos (datos + ID del creador)
     return this.alumnosService.create(createAlumnoDto, req.user.id);
   }
 
@@ -18,19 +18,26 @@ export class AlumnosController {
     const user = req.user;
     const rol = user.user_metadata?.rol?.toLowerCase();
     
-    console.log(`🔎 Consultando alumnos. Usuario: ${user.email}, Rol: ${rol}, Estado: ${estado}`);
-
-    // CORRECCIÓN DEL ERROR 2: Usamos findAll o findByTutor
-    
-    // 👑 MODO OPERATIVO: Propietario, Admin y ASISTENTE ven TODO
-    // El asistente necesita ver todos los alumnos para poder registrar asistencias en cualquier ruta
+    // MODO OPERATIVO: Propietario, Admin y Asistente ven TODOS los alumnos
     if (rol === 'propietario' || rol === 'admin' || rol === 'asistente') {
         return this.alumnosService.findAll(estado);
     }
 
-    // 👨‍👩‍👧‍👦 MODO TUTOR: Solo ve a sus hijos
+    // MODO TUTOR: Solo ve a sus hijos
     return this.alumnosService.findByTutor(user.id, estado);
   }
+  
+  // --- RUTA DE MANTENIMIENTO ANUAL (Promoción) ---
+  @Patch('promover')
+  async promover(@Request() req: any) {
+      // 🛡️ VALIDACIÓN CRÍTICA: Solo el Propietario/Admin puede ejecutar la promoción
+      const rol = req.user.user_metadata?.rol?.toLowerCase();
+      if (rol !== 'propietario' && rol !== 'admin') {
+          throw new UnauthorizedException('Acceso denegado. Se requiere rol de Propietario o Administrador para esta función.');
+      }
+      return this.alumnosService.promoverAlumnos();
+  }
+  // ------------------------------------------------
 
   @Get(':id')
   findOne(@Param('id') id: string) {

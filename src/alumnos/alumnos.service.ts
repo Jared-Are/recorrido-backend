@@ -1,122 +1,158 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Alumno } from './alumno.entity';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { getSiguienteGrado } from './alumnos.utility'; // 👈 Importamos la lógica de promoción
 
 @Injectable()
 export class AlumnosService {
-  constructor(
-    @InjectRepository(Alumno)
-    private alumnosRepository: Repository<Alumno>,
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
-    private usersService: UsersService, // Inyectamos el servicio experto en usuarios
-  ) {}
+    constructor(
+        @InjectRepository(Alumno) private alumnosRepository: Repository<Alumno>,
+        @InjectRepository(User) private usersRepository: Repository<User>,
+        private usersService: UsersService,
+    ) {}
 
-  // --- CREAR ALUMNO CON ASIGNACIÓN INTELIGENTE ---
-  async create(data: any, creatorId: string) {
-    let tutorId = creatorId; // Por defecto, el tutor es quien crea (si es un padre)
+    // --- CREAR ALUMNO CON ASIGNACIÓN INTELIGENTE ---
+    async create(data: any, creatorId: string) {
+        let tutorId = creatorId;
 
-    // Si el que registra es Admin/Propietario, vendrán datos del tutor en 'data.tutor'
-    if (data.tutor && data.tutor.telefono) {
-        const telefonoTutor = data.tutor.telefono.trim();
-        const nombreTutor = data.tutor.nombre?.trim() || "Tutor sin nombre";
+        if (data.tutor && data.tutor.telefono) {
+            const telefonoTutor = data.tutor.telefono.trim();
+            const nombreTutor = data.tutor.nombre?.trim() || "Tutor sin nombre";
 
-        // 1. BÚSQUEDA: ¿Ya existe este tutor por teléfono?
-        let padreEncontrado = await this.usersRepository.findOne({ 
-            where: { telefono: telefonoTutor } 
-        });
+            let padreEncontrado = await this.usersRepository.findOne({ 
+                where: { telefono: telefonoTutor } 
+            });
 
-        if (padreEncontrado) {
-            // 2a. SI EXISTE: Usamos su ID. ¡Aquí evitamos duplicados!
-            console.log(`✅ Tutor existente encontrado: ${padreEncontrado.nombre} (${padreEncontrado.id})`);
-            tutorId = padreEncontrado.id;
-        } else {
-            // 2b. NO EXISTE: Lo creamos usando UsersService (que maneja Supabase y todo)
-            console.log(`🆕 Creando nuevo Tutor para: ${nombreTutor}`);
-            try {
-                const nuevoPadre = await this.usersService.create({
-                    nombre: nombreTutor,
-                    telefono: telefonoTutor,
-                    rol: 'tutor', // Forzamos rol tutor
-                    // UsersService generará username, password temporal y auth_id automáticamente
-                });
-                tutorId = nuevoPadre.id;
-            } catch (error) {
-                console.error("Error al crear tutor automático:", error);
-                // Si falla (ej. teléfono inválido), lanzamos error claro
-                throw new BadRequestException("No se pudo registrar al tutor automáticamente. Verifica el teléfono.");
+            if (padreEncontrado) {
+                console.log(`✅ Tutor existente encontrado: ${padreEncontrado.nombre} (${padreEncontrado.id})`);
+                tutorId = padreEncontrado.id;
+            } else {
+                console.log(`🆕 Creando nuevo Tutor para: ${nombreTutor}`);
+                try {
+                    const nuevoPadre = await this.usersService.create({
+                        nombre: nombreTutor,
+                        telefono: telefonoTutor,
+                        rol: 'tutor',
+                    });
+                    tutorId = nuevoPadre.id;
+                } catch (error) {
+                    console.error("Error al crear tutor automático:", error);
+                    throw new BadRequestException("No se pudo registrar al tutor automáticamente. Verifica el teléfono.");
+                }
             }
         }
+
+        const { tutor, ...datosAlumno } = data;
+
+        const nuevoAlumno = this.alumnosRepository.create({
+            ...datosAlumno,
+            tutor: typeof tutor === 'object' ? tutor.nombre : tutor,
+            contacto: typeof tutor === 'object' ? tutor.telefono : '',
+            tutorUserId: tutorId, 
+            activo: true
+        });
+
+        return await this.alumnosRepository.save(nuevoAlumno);
+    }
+    
+    // --- NUEVO: FUNCIÓN DE PROMOCIÓN MASIVA (MANTENIMIENTO ANUAL) ---
+    async promoverAlumnos() {
+        // 1. Obtener todos los alumnos activos
+        const alumnos = await this.alumnosRepository.find({ where: { activo: true } });
+
+        if (alumnos.length === 0) {
+            return { message: "No hay alumnos activos para promover." };
+        }
+
+        const cambios = alumnos.map(alumno => {
+            const siguienteGrado = getSiguienteGrado(alumno.grado);
+
+            if (siguienteGrado === 'GRADUADO') {
+                // Caso 1: Graduación (6° Primaria -> Inactivo)
+                return {
+                    ...alumno,
+                    grado: 'Graduado', // Cambiamos el grado a Graduado para el registro
+                    activo: false, // Se desactiva para que no salga en las listas de asistencia/cobro
+                };
+            } else if (siguienteGrado) {
+                // Caso 2: Promoción Normal
+                return {
+                    ...alumno,
+                    grado: siguienteGrado,
+                };
+            }
+            // Caso 3: Si el grado no está en el mapa, lo dejamos como está.
+            return alumno;
+        });
+
+        // 2. Guardar todos los cambios en la BD
+        await this.alumnosRepository.save(cambios);
+
+        return { 
+            message: "Promoción y Graduación completada. El ciclo escolar de cobros se reinicia.",
+            totalAlumnos: alumnos.length, 
+            promovidos: cambios.filter(c => c.activo && c.grado !== c.grado).length,
+            graduados: cambios.filter(c => c.grado === 'Graduado').length
+        };
+    }
+    // ----------------------------------------------------------------
+
+    // --- BUSCAR TODOS ---
+    async findAll(estado?: string) {
+        const query = this.alumnosRepository.createQueryBuilder('alumno')
+            .leftJoinAndSelect('alumno.tutorUser', 'tutor')
+            .leftJoinAndSelect('alumno.vehiculo', 'vehiculo')
+            .orderBy('alumno.nombre', 'ASC');
+
+        if (estado === 'activo') {
+            query.andWhere('alumno.activo = :activo', { activo: true });
+        } else if (estado === 'inactivo') {
+            query.andWhere('alumno.activo = :activo', { activo: false });
+        }
+
+        return await query.getMany();
     }
 
-    // 3. ASIGNACIÓN: Creamos el alumno vinculado al ID del tutor (viejo o nuevo)
-    // Desestructuramos para sacar 'tutor' del objeto, ya que no es columna directa en Alumno
-    const { tutor, ...datosAlumno } = data;
+    // --- BUSCAR POR TUTOR ---
+    async findByTutor(userId: string, estado?: string) {
+        const query = this.alumnosRepository.createQueryBuilder('alumno')
+            .leftJoinAndSelect('alumno.tutorUser', 'tutor')
+            .leftJoinAndSelect('alumno.vehiculo', 'vehiculo')
+            .where('alumno.tutorUserId = :userId', { userId }) 
+            .orderBy('alumno.nombre', 'ASC');
 
-    const nuevoAlumno = this.alumnosRepository.create({
-        ...datosAlumno,
-        tutor: typeof tutor === 'object' ? tutor.nombre : tutor, // Guardamos nombre texto por compatibilidad
-        contacto: typeof tutor === 'object' ? tutor.telefono : '', // Guardamos contacto texto por compatibilidad
-        tutorUserId: tutorId, // 🔗 LA RELACIÓN IMPORTANTE (Foreign Key)
-        activo: true
-    });
+        if (estado === 'activo') {
+            query.andWhere('alumno.activo = :activo', { activo: true });
+        } else if (estado === 'inactivo') {
+            query.andWhere('alumno.activo = :activo', { activo: false });
+        }
 
-    return await this.alumnosRepository.save(nuevoAlumno);
-  }
-
-  // --- 👑 BUSCAR TODOS (Para Admin/Propietario) ---
-  async findAll(estado?: string) {
-    const query = this.alumnosRepository.createQueryBuilder('alumno')
-        .leftJoinAndSelect('alumno.tutorUser', 'tutor') // Datos del usuario tutor
-        .leftJoinAndSelect('alumno.vehiculo', 'vehiculo')
-        .orderBy('alumno.nombre', 'ASC');
-
-    if (estado === 'activo') {
-        query.andWhere('alumno.activo = :activo', { activo: true });
-    } else if (estado === 'inactivo') {
-        query.andWhere('alumno.activo = :activo', { activo: false });
+        return await query.getMany();
     }
 
-    return await query.getMany();
-  }
-
-  // --- 👨‍👩‍👧‍👦 BUSCAR POR TUTOR (Para el Dashboard del Padre) ---
-  async findByTutor(userId: string, estado?: string) {
-    const query = this.alumnosRepository.createQueryBuilder('alumno')
-        .leftJoinAndSelect('alumno.tutorUser', 'tutor')
-        .leftJoinAndSelect('alumno.vehiculo', 'vehiculo')
-        .where('alumno.tutorUserId = :userId', { userId }) // 🔒 Solo sus hijos
-        .orderBy('alumno.nombre', 'ASC');
-
-    if (estado === 'activo') {
-        query.andWhere('alumno.activo = :activo', { activo: true });
-    } else if (estado === 'inactivo') {
-        query.andWhere('alumno.activo = :activo', { activo: false });
+    async findOne(id: string) {
+        const alumno = await this.alumnosRepository.findOne({
+            where: { id },
+            relations: ['tutorUser', 'vehiculo']
+        });
+        if (!alumno) throw new NotFoundException(`Alumno con ID ${id} no encontrado`);
+        return alumno;
     }
 
-    return await query.getMany();
-  }
+    async update(id: string, changes: any) {
+        const alumno = await this.findOne(id);
+        this.alumnosRepository.merge(alumno, changes);
+        return await this.alumnosRepository.save(alumno);
+    }
 
-  async findOne(id: string) {
-    const alumno = await this.alumnosRepository.findOne({
-        where: { id },
-        relations: ['tutorUser', 'vehiculo']
-    });
-    if (!alumno) throw new NotFoundException(`Alumno con ID ${id} no encontrado`);
-    return alumno;
-  }
-
-  async update(id: string, changes: any) {
-    const alumno = await this.findOne(id);
-    this.alumnosRepository.merge(alumno, changes);
-    return await this.alumnosRepository.save(alumno);
-  }
-
-  async remove(id: string) {
-    const alumno = await this.findOne(id);
-    return await this.alumnosRepository.remove(alumno);
-  }
+    async remove(id: string) {
+        const alumno = await this.findOne(id);
+        // Nota: Esto ejecuta un DELETE físico. Para borrado lógico usa:
+        // alumno.activo = false; 
+        // return await this.alumnosRepository.save(alumno);
+        return await this.alumnosRepository.remove(alumno);
+    }
 }
