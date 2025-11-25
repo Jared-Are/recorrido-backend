@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+// 👇 IMPORTAR MÓDULO DE PROTECCIÓN (RATE LIMIT)
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -20,20 +23,22 @@ import { TutorModule } from './tutor/tutor.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { SolicitudesModule } from './solicitudes/solicitudes.module';
 
-// Módulos de Notificaciones y Tiempo Real (NUEVOS)
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { EventsModule } from './events/events.module';
 
-// Supabase y Seguridad
 import { SupabaseModule } from './supabase/supabase.module';
 import { AuthGuard } from './supabase/auth.guard'; 
 
 @Module({
   imports: [
-    // 1. Configuración Global
     ConfigModule.forRoot({ isGlobal: true }),
     
-    // 2. Base de Datos
+    // 🛡️ 1. CONFIGURACIÓN DE RATE LIMITING (ANTISPAM)
+    ThrottlerModule.forRoot([{
+      ttl: 60000, // Tiempo de vida: 60 segundos (1 minuto)
+      limit: 20,  // Límite: Máximo 20 peticiones por IP en ese minuto
+    }]),
+
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -50,7 +55,6 @@ import { AuthGuard } from './supabase/auth.guard';
       }),
     }),
     
-    // 3. Módulos de la Aplicación
     SupabaseModule,
     UsersModule,
     AlumnosModule,
@@ -65,14 +69,18 @@ import { AuthGuard } from './supabase/auth.guard';
     TutorModule,
     ReportesModule,
     SolicitudesModule,
-    
-    // 4. Nuevos Módulos de Notificaciones
-    NotificacionesModule, // 👈 Para guardar historial de campanas
-    EventsModule,         // 👈 Para WebSockets en tiempo real
+    NotificacionesModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // 🛡️ 2. ACTIVAR EL ESCUDO GLOBALMENTE
+    // El orden importa: Primero revisamos si es spam (Throttler), luego si tiene token (Auth)
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: AuthGuard,
