@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserStatus } from './user.entity';
@@ -62,7 +62,7 @@ export class UsersService {
       // Verificamos si ya existe (aunque PersonalService ya lo valida, es doble seguridad)
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
       if (existe) {
-          // Si ya existe, retornamos el existente para no fallar (caso re-contratación o tutor que se vuelve empleado)
+          // Si ya existe, retornamos el existente para no fallar
           return existe; 
       }
 
@@ -101,6 +101,7 @@ export class UsersService {
         rol: datos.rol || 'tutor',
         estatus: UserStatus.INVITADO, 
         contrasena: undefined, 
+        intentosFallidos: 0, // Inicializamos contador
       });
 
       return await this.usersRepository.save(nuevoUsuario);
@@ -129,17 +130,9 @@ export class UsersService {
 
     await this.usersRepository.save(user);
 
-    // Usamos variable de entorno o fallback a Vercel
     let frontendUrl = process.env.FRONTEND_URL || 'https://recorrido-lac.vercel.app';
-    
-    // Asegurar https://
-    if (!frontendUrl.startsWith('http')) {
-        frontendUrl = `https://${frontendUrl}`;
-    }
-    // Quitar barra final si existe
-    if (frontendUrl.endsWith('/')) {
-        frontendUrl = frontendUrl.slice(0, -1);
-    }
+    if (!frontendUrl.startsWith('http')) frontendUrl = `https://${frontendUrl}`;
+    if (frontendUrl.endsWith('/')) frontendUrl = frontendUrl.slice(0, -1);
     
     const linkActivacion = `${frontendUrl}/activar?token=${token}`;
     
@@ -158,12 +151,12 @@ export class UsersService {
     } catch(e) { console.error("Error al sincronizar password con Supabase"); }
 
     user.estatus = UserStatus.ACTIVO;
-    user.invitationToken = null as any; // Quemamos el token para que no se use de nuevo
+    user.invitationToken = null as any; 
 
     return await this.usersRepository.save(user);
   }
 
-  // --- LOGIN ---
+  // --- LOGIN BLINDADO (PROTECCIÓN FUERZA BRUTA) ---
   async login(username: string, contrasena: string) {
     if (!username) throw new BadRequestException("Username es obligatorio");
 
@@ -173,17 +166,47 @@ export class UsersService {
 
     const user = await query.getOne();
 
-    if (!user) throw new UnauthorizedException("Usuario no encontrado.");
+    // 1. Validaciones básicas
+    if (!user) throw new UnauthorizedException("Credenciales inválidas.");
+    
+    // 2. 🔒 VERIFICAR SI ESTÁ BLOQUEADO
+    if (user.bloqueadoHasta && new Date() < user.bloqueadoHasta) {
+        const tiempoRestante = Math.ceil((user.bloqueadoHasta.getTime() - new Date().getTime()) / 60000);
+        throw new ForbiddenException(`Cuenta bloqueada temporalmente por seguridad. Intenta de nuevo en ${tiempoRestante} minutos.`);
+    }
+
     if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
 
+    // 3. Intentar Login
     const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
         email: user.email, 
         password: contrasena
     });
 
     if (error) {
-        console.error(`Login fallido para usuario: ${username}. Razón: ${error.message}`);
+        // 🛑 FALLO DE CONTRASEÑA: CASTIGO
+        user.intentosFallidos = (user.intentosFallidos || 0) + 1;
+        
+        // Si llega a 5 intentos, BLOQUEAR 15 MINUTOS
+        if (user.intentosFallidos >= 5) {
+            const bloqueo = new Date();
+            bloqueo.setMinutes(bloqueo.getMinutes() + 15); 
+            user.bloqueadoHasta = bloqueo;
+            console.warn(`🚨 Usuario ${username} BLOQUEADO hasta ${bloqueo}`);
+        }
+        
+        await this.usersRepository.save(user); // Guardamos el fallo
+        
+        console.error(`Login fallido para: ${username}. Intentos: ${user.intentosFallidos}`);
         throw new UnauthorizedException("Contraseña incorrecta.");
+    }
+
+    // ✅ ÉXITO: PERDÓN (Resetear contadores)
+    if (user.intentosFallidos > 0 || user.bloqueadoHasta) {
+        user.intentosFallidos = 0;
+        // 👇 CORRECCIÓN: Usamos 'as any' para permitir asignar null, ya que en la entidad está definido como Date
+        user.bloqueadoHasta = null as any; 
+        await this.usersRepository.save(user);
     }
 
     const { contrasena: pass, invitationToken, ...result } = user;
@@ -195,7 +218,6 @@ export class UsersService {
     };
   }
 
-  // --- ADMIN SEED (Deshabilitado en producción) ---
   async createAdminSeed() {
     return { message: "Función deshabilitada por seguridad en producción" };
   }

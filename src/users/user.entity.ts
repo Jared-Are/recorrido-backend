@@ -1,10 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, CreateDateColumn } from 'typeorm';
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 
 export enum UserStatus {
   INVITADO = 'INVITADO',
   ACTIVO = 'ACTIVO',
+  BLOQUEADO = 'BLOQUEADO'
 }
 
 // Mantenemos el enum por si lo usas en otros lados, pero la entidad usará string
@@ -55,6 +56,16 @@ export class User {
 
   @Column({ type: 'text', nullable: true, select: false })
   invitationToken: string;
+
+// 👇 CAMPOS DE SEGURIDAD (Anti Fuerza Bruta)
+  @Column({ type: 'int', default: 0 })
+  intentosFallidos: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  bloqueadoHasta: Date;
+
+  @CreateDateColumn()
+  fechaCreacion: Date;
 
   // --- RELACIONES ---
 
