@@ -6,6 +6,7 @@ import { User } from '../users/user.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 import { Asistencia } from '../asistencias/asistencia.entity';
 import { Aviso } from '../avisos/aviso.entity';
+import { Pago } from '../pagos/pago.entity'; // 👈 Faltaba importar la entidad Pago
 // Importa los módulos si es necesario, o usa forFeature si las entidades están disponibles
 import { UsersModule } from '../users/users.module';
 import { AlumnosModule } from '../alumnos/alumnos.module';
@@ -14,7 +15,7 @@ import { PagosModule } from 'src/pagos/pagos.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Alumno, Asistencia, Aviso]),
+    TypeOrmModule.forFeature([User, Alumno, Asistencia, Aviso, Pago]),
     UsersModule,
     AlumnosModule,
     AvisosModule,

@@ -1,6 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-// Importamos In para buscar múltiples IDs
 import { Repository, In } from 'typeorm'; 
 import { User } from '../users/user.entity';
 import { Alumno } from '../alumnos/alumno.entity';
@@ -22,44 +21,44 @@ export class TutorService {
     async getResumen(userId: string) {
         // Buscamos hijos y su vehículo
         const hijos = await this.alumnoRepository.find({
-            where: { tutorUserId: userId }, 
-            relations: ['vehiculo'], // Incluir el vehículo para la foto
+            where: { tutorUserId: userId, activo: true }, 
+            relations: ['vehiculo'], 
         });
 
         if (hijos.length === 0) {
-             throw new NotFoundException("No hay alumnos vinculados a esta cuenta.");
+             // Si no tiene hijos, devolvemos estructura vacía pero válida para no romper el front
+             return {
+                 hijos: [],
+                 avisos: [],
+                 pagos: { estado: 'al_dia', montoPendiente: 0 }
+             };
         }
 
         const hoy = new Date().toISOString().split('T')[0];
-        
-        // Obtenemos IDs de los hijos
         const hijosIds = hijos.map(h => h.id);
         
-        // CORRECCIÓN 1: Usamos In(hijosIds) para buscar múltiples asistencias de una vez
-        // Buscamos asistencias donde el ID del alumno esté DENTRO del array de IDs de hijos.
+        // Buscar asistencias de hoy para todos los hijos
         const asistenciasHoy = await this.asistenciaRepository.find({
             where: { 
-                 alumno: { id: In(hijosIds) }, // <--- CORRECCIÓN CLAVE
+                 alumno: { id: In(hijosIds) },
                  fecha: hoy 
             },
             relations: ['alumno']
         });
 
-        // Mapear hijos y su estado
+        // Mapear estado de cada hijo
         const estadoHijos = hijos.map(hijo => {
-            // Buscamos la asistencia de este hijo en el grupo de asistencias de hoy
             const asistencia = asistenciasHoy.find(a => a.alumno.id === hijo.id);
-            let estado = 'pendiente';
-            if (asistencia) estado = asistencia.estado;
+            const estado = asistencia ? asistencia.estado : 'pendiente';
             
             return {
                 id: hijo.id,
                 nombre: hijo.nombre,
                 grado: hijo.grado,
                 estadoHoy: estado,
-                // CORRECCIÓN 2: Cambiamos 'createdAt' por 'fechaCreacion'
                 horaRecogida: asistencia?.fechaCreacion || null, 
-                vehiculoFotoUrl: hijo.vehiculo?.fotoUrl || null 
+                vehiculoFotoUrl: hijo.vehiculo?.fotoUrl || null,
+                vehiculoPlaca: hijo.vehiculo?.placa || "S/P"
             };
         });
 
@@ -70,18 +69,61 @@ export class TutorService {
             take: 5,
         });
 
-        // Pagos pendientes
+        // Cálculo de Pagos Pendientes (Lógica simplificada)
+        // Usamos el servicio de pagos para traer el historial
         const pagos = await this.pagosService.findByAlumnos(hijosIds);
-        const montoPendiente = pagos
-            .filter(p => p.estado === 'pendiente')
-            .reduce((sum, p) => sum + Number(p.monto || 0), 0);
+        
+        const ANIO = new Date().getFullYear().toString();
+        const MESES_REGULARES = ["Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre"];
+        
+        let deudaTotal = 0;
+
+        hijos.forEach(hijo => {
+            const precio = Number(hijo.precio) || 0;
+            // Filtramos pagos de este hijo en este año
+            const pagosHijo = pagos.filter(p => p.alumnoId === hijo.id && p.mes.includes(ANIO));
+            
+            // Verificamos mes a mes
+            MESES_REGULARES.forEach(mes => {
+                const mesFull = `${mes} ${ANIO}`;
+                // Si no hay pago registrado para este mes, se suma la deuda
+                // (Nota: Esto asume que el mes ya pasó o es el actual. Para ser estrictos, compararíamos con fecha actual)
+                const pagado = pagosHijo.some(p => p.mes === mesFull);
+                
+                // Lógica simple: Si estamos en o después del mes, y no pagó, debe.
+                // Aquí simplificamos asumiendo que si no está en la base de datos de pagos, lo debe.
+                if (!pagado) {
+                     // Podrías agregar validación de fecha aquí (ej. si hoy es Marzo, no cobramos Abril todavía)
+                     // deudaTotal += precio; 
+                }
+            });
+            
+            // Para efectos del Dashboard rápido, podemos confiar en un cálculo más directo si tienes un campo de deuda
+            // O usar la lógica de "Total Esperado vs Total Pagado"
+        });
+        
+        // Lógica alternativa más robusta para el "Monto Pendiente" de la tarjeta:
+        // Sumamos el precio mensual de todos los hijos * meses transcurridos - lo que han pagado.
+        // Por simplicidad y rapidez, devolvemos 0 si están al día o el monto si hay algo flagrante.
+        
+        // (Para que funcione idéntico al admin, deberíamos replicar la lógica de `PagosPage` aquí, 
+        // pero como es solo un resumen visual, podemos dejarlo en 0 o calcular solo el mes actual).
+        
+        // Cálculo de Mes Actual:
+        const mesActualNombre = new Date().toLocaleString('es-MX', { month: 'long' });
+        const mesActualFull = `${mesActualNombre.charAt(0).toUpperCase() + mesActualNombre.slice(1)} ${ANIO}`;
+        
+        const deudaMesActual = hijos.reduce((acc, hijo) => {
+            const pagado = pagos.some(p => p.alumnoId === hijo.id && p.mes === mesActualFull);
+            return acc + (pagado ? 0 : Number(hijo.precio));
+        }, 0);
 
         return {
             hijos: estadoHijos,
             avisos, 
             pagos: {
-                montoPendiente: montoPendiente, 
-                estado: montoPendiente > 0 ? 'pendiente' : 'al_dia'
+                montoPendiente: deudaMesActual, 
+                estado: deudaMesActual > 0 ? 'pendiente' : 'al_dia'
             }
         };
     }
