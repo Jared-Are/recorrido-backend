@@ -1,31 +1,32 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express'; // 👈 IMPORTANTE
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  
+  // 👇 CAMBIO: Tipamos la app como NestExpressApplication para acceder a "set"
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // 🛡️ 1. HABILITAR CORS DE FORMA SEGURA (VERSIÓN VERCEL)
+  // 🛡️ ACTIVAR TRUST PROXY (CRÍTICO PARA RENDER)
+  // Esto permite que el Rate Limit lea la IP real del usuario y no la del balanceador de carga.
+  app.set('trust proxy', 1);
+
+  // 🛡️ 1. HABILITAR CORS DE FORMA SEGURA
   const allowedOrigins = [
-    'http://localhost:3000', // Local
-    'http://localhost:3001', // Local alternativo
-    process.env.FRONTEND_URL, // Tu URL principal definida en variables de entorno
-    // Agrega aquí tu dominio exacto de Vercel si lo conoces:
+    'http://localhost:3000', 
+    'http://localhost:3001',
+    process.env.FRONTEND_URL, 
     'https://recorrido-lac.vercel.app' 
   ].filter(Boolean);
 
   app.enableCors({
     origin: (origin, callback) => {
-      // 1. Permitir peticiones sin origen (Postman, Apps móviles)
       if (!origin) return callback(null, true);
-
-      // 2. Permitir orígenes explícitos (localhost, variable de entorno)
+      
       if (allowedOrigins.includes(origin)) return callback(null, true);
-
-      // 3. 🚨 REGLA ESPECIAL PARA VERCEL 🚨
-      // Esto permite tu dominio principal Y las Deploy Previews (ramas de prueba)
-      // Cambia "recorrido" por el nombre de tu proyecto o usa simplemente /\.vercel\.app$/
+      
       if (origin.endsWith('.vercel.app')) {
          return callback(null, true);
       }
@@ -50,6 +51,6 @@ async function bootstrap() {
   await app.listen(port);
   
   logger.log(`\n\n🛡️ SERVIDOR SEGURO INICIADO EN PUERTO: ${port}`);
-  logger.log(`🛡️ CORS HABILITADO PARA VERCEL Y LOCALHOST\n`);
+  logger.log(`🛡️ CORS HABILITADO CON TRUST PROXY ACTIVO\n`);
 }
 bootstrap();
